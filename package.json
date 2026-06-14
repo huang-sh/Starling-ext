@@ -2,7 +2,7 @@
   "name": "starling-ai",
   "displayName": "Starling Agent",
   "description": "Agent session manager — discover, pin, and organize AI coding sessions",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "huangsh",
   "icon": "icons/starling.png",
   "license": "MIT",
@@ -39,6 +39,7 @@
     "onCommand:starling.modelOpenSettings",
     "onCommand:starling.modelStart",
     "onCommand:starling.modelStartInCatalog",
+    "onCommand:starling.modelDelete",
     "onCommand:starling.copySessionId",
     "onCommand:starling.catalogList",
     "onCommand:starling.catalogTree",
@@ -177,6 +178,11 @@
         "icon": "$(play)"
       },
       {
+        "command": "starling.modelDelete",
+        "title": "Starling: Delete Model Profile",
+        "icon": "$(trash)"
+      },
+      {
         "command": "starling.catalogList",
         "title": "Starling: List Catalogs"
       },
@@ -293,18 +299,23 @@
         },
         {
           "command": "starling.modelOpenSettings",
-          "when": "viewItem == model-profile",
+          "when": "viewItem == model-profile || viewItem == model-current",
           "group": "modelContext@1"
         },
         {
           "command": "starling.modelStart",
-          "when": "viewItem == model-profile",
+          "when": "viewItem == model-profile || viewItem == model-current",
           "group": "modelContext@2"
         },
         {
           "command": "starling.modelStartInCatalog",
-          "when": "viewItem == model-profile",
+          "when": "viewItem == model-profile || viewItem == model-current",
           "group": "modelContext@3"
+        },
+        {
+          "command": "starling.modelDelete",
+          "when": "viewItem == model-profile",
+          "group": "modelContext@9"
         },
         {
           "command": "starling.openProject",

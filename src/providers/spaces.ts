@@ -31,7 +31,7 @@ class SpaceNode extends vscode.TreeItem {
 }
 
 class PinNode extends vscode.TreeItem {
-  constructor(public readonly bookmark: cli.Bookmark) {
+  constructor(public readonly bookmark: cli.Bookmark, public readonly session?: cli.SessionMeta) {
     super(
       truncate(bookmark.title || shortSessionId(bookmark.session_id) + "…"),
       vscode.TreeItemCollapsibleState.None
@@ -41,6 +41,11 @@ class PinNode extends vscode.TreeItem {
     this.tooltip = [
       `Pin: ${bookmark.id}`,
       `Session: ${bookmark.session_id}`,
+      `Agent: ${session?.provider || bookmark.provider || "-"}`,
+      `Model: ${session?.model || "-"}`,
+      `Project: ${session?.project_path || bookmark.project_path || "-"}`,
+      `Modified: ${session?.modified_at || "-"}`,
+      `Tokens: ${formatTokenUsage(session?.token_usage)}`,
       `Title: ${bookmark.title || "-"}`,
       `Tags: ${bookmark.tags.join(", ") || "-"}`,
       `Created: ${bookmark.created_at}`,
@@ -72,8 +77,12 @@ function errorItem(label: string, err: unknown): vscode.TreeItem {
 export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
   private _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._onDidChange.event;
+  private readonly sessionLookup = new Map<string, cli.SessionMeta>();
+  private readonly sessionLoads = new Set<string>();
 
   refresh(): void {
+    this.sessionLookup.clear();
+    this.sessionLoads.clear();
     this._onDidChange.fire();
   }
 
@@ -99,15 +108,52 @@ export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
         if (children.length === 0 && pins.length === 0) {
           return [new vscode.TreeItem("(empty)", vscode.TreeItemCollapsibleState.None)];
         }
-        return [...children, ...pins.map((p) => new PinNode(p))];
+        this.hydratePinSessions(pins);
+        return [...children, ...pins.map((p) => new PinNode(p, this.sessionLookup.get(p.session_id)))];
       }
     } catch (err) {
       return [errorItem("Error loading catalogs", err)];
     }
     return [];
   }
+
+  private hydratePinSessions(pins: cli.Bookmark[]): void {
+    const pending = pins
+      .map((pin) => pin.session_id)
+      .filter((sessionId) => sessionId && !this.sessionLookup.has(sessionId) && !this.sessionLoads.has(sessionId));
+    if (pending.length === 0) return;
+
+    for (const sessionId of pending) {
+      this.sessionLoads.add(sessionId);
+    }
+
+    void Promise.allSettled(
+      pending.map(async (sessionId) => {
+        const session = await cli.getSession(sessionId);
+        this.sessionLookup.set(sessionId, session);
+      })
+    ).then((results) => {
+      for (let index = 0; index < pending.length; index += 1) {
+        this.sessionLoads.delete(pending[index]);
+      }
+      if (results.some((result) => result.status === "fulfilled")) {
+        this._onDidChange.fire();
+      }
+    });
+  }
 }
 
 function childCatalogs(spaces: cli.SpaceWithPins[], parentId: string): cli.SpaceWithPins[] {
   return spaces.filter((space) => space.parent_id === parentId);
+}
+
+function formatTokenUsage(tokenUsage?: cli.TokenUsage): string {
+  if (!tokenUsage) {
+    return "unknown";
+  }
+  const input = tokenUsage.input_tokens ?? "-";
+  const output = tokenUsage.output_tokens ?? "-";
+  const total = tokenUsage.total_tokens ?? "-";
+  const cache = tokenUsage.cache_tokens ?? "-";
+  return `input: ${input}, output: ${output}, total: ${total}, cache: ${cache}`;
 }

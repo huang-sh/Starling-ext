@@ -456,6 +456,13 @@ export async function listModels(agent?: string): Promise<ModelConfigSummary[]> 
   );
 }
 
+export async function deleteModelProfile(model: ModelConfigSummary): Promise<void> {
+  await execStarlingRaw(["model", "delete", model.name, "--agent", model.agent], {
+    timeout: DEFAULT_TEXT_TIMEOUT,
+  });
+  clearCliCache("modelList:");
+}
+
 export async function catalogShowText(name: string): Promise<string> {
   return execStarlingRaw(["catalog", "show", name]);
 }

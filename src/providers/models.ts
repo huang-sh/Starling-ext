@@ -16,7 +16,7 @@ export class ModelNode extends vscode.TreeItem {
   constructor(public readonly model: cli.ModelConfigSummary) {
     const displayName = model.scope === "current" && model.name === "current" ? "default" : model.name;
     super(displayName, vscode.TreeItemCollapsibleState.None);
-    this.contextValue = "model-profile";
+    this.contextValue = model.scope === "profile" ? "model-profile" : "model-current";
     this.iconPath = new vscode.ThemeIcon(model.agent === "claude" ? "sparkle" : "terminal");
     this.description = [model.model || "-", model.provider || ""].filter(Boolean).join(" · ");
     this.tooltip = [

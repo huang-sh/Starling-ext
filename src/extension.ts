@@ -342,6 +342,19 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand("starling.modelDelete", async (node: unknown) => {
+      try {
+        const model = await pickModelFromNode(node);
+        if (!model) return;
+        await deleteModelProfile(model);
+        refreshAllViews();
+      } catch (err) {
+        await showCommandError("Delete model profile", err);
+      }
+    })
+  );
+
   const createCatalogFromInput = async (parent?: cli.Space): Promise<void> => {
     const name = await vscode.window.showInputBox({
       title: parent ? `Child catalog under ${parent.name}` : "Catalog name",
@@ -773,10 +786,27 @@ async function openModelSettings(model: cli.ModelConfigSummary): Promise<void> {
     );
     if (create !== "Create File") return;
     await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(model.source)));
-    await vscode.workspace.fs.writeFile(uri, Buffer.from(JSON.stringify(modelProfileTemplate(model.agent), null, 2) + "\n", "utf-8"));
+    await vscode.workspace.fs.writeFile(uri, Buffer.from(modelProfileTemplateText(model.agent), "utf-8"));
   }
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document, { preview: false });
+}
+
+async function deleteModelProfile(model: cli.ModelConfigSummary): Promise<void> {
+  if (model.scope !== "profile") {
+    throw new Error("Only Starling model profiles can be deleted. Default/current model settings are not deleted from the extension.");
+  }
+  if (!model.exists) {
+    throw new Error(`Model profile source does not exist: ${model.source}`);
+  }
+  const confirmed = await vscode.window.showWarningMessage(
+    `Delete ${model.agent} model profile "${model.name}"?`,
+    { modal: true, detail: `This removes ${model.source}. It does not delete default agent settings or auth files.` },
+    "Delete"
+  );
+  if (confirmed !== "Delete") return;
+  await cli.deleteModelProfile(model);
+  vscode.window.showInformationMessage(`Deleted ${model.agent} model profile: ${model.name}`);
 }
 
 function shellArg(value: string): string {
@@ -992,7 +1022,7 @@ async function collectAndAddModelProfile(): Promise<{ agent: "claude" | "codex";
 
   const name = normalizeOptionalInput(await vscode.window.showInputBox({
     title: "Profile name",
-    prompt: "Stored under ~/.starling/settings/<agent>/<name>.json",
+    prompt: "Claude uses JSON; Codex uses TOML under ~/.starling/settings/<agent>/",
     validateInput: (value) => {
       const trimmed = value.trim();
       if (!trimmed) return "Profile name is required";
@@ -1002,12 +1032,13 @@ async function collectAndAddModelProfile(): Promise<{ agent: "claude" | "codex";
   }));
   if (!name) return undefined;
 
-  const filePath = path.join(os.homedir(), ".starling", "settings", agent, `${name}.json`);
+  const extension = agent === "codex" ? ".toml" : ".json";
+  const filePath = path.join(os.homedir(), ".starling", "settings", agent, `${name}${extension}`);
   const uri = vscode.Uri.file(filePath);
   const exists = await fileExists(uri);
   if (!exists) {
     await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(filePath)));
-    await vscode.workspace.fs.writeFile(uri, Buffer.from(JSON.stringify(modelProfileTemplate(agent), null, 2) + "\n", "utf-8"));
+    await vscode.workspace.fs.writeFile(uri, Buffer.from(modelProfileTemplateText(agent), "utf-8"));
   }
 
   const document = await vscode.workspace.openTextDocument(uri);
@@ -1061,6 +1092,12 @@ async function fileExists(uri: vscode.Uri): Promise<boolean> {
   }
 }
 
+function modelProfileTemplateText(agent: "claude" | "codex"): string {
+  const template = modelProfileTemplate(agent);
+  if (agent === "codex") return codexModelProfileTemplateToml();
+  return `${JSON.stringify(template, null, 2)}\n`;
+}
+
 function modelProfileTemplate(agent: "claude" | "codex"): Record<string, unknown> {
   if (agent === "claude") {
     return {
@@ -1108,6 +1145,25 @@ function modelProfileTemplate(agent: "claude" | "codex"): Record<string, unknown
       },
     },
   };
+}
+
+function codexModelProfileTemplateToml(): string {
+  return [
+    'model_provider = "custom"',
+    'model = ""',
+    'model_reasoning_effort = "high"',
+    "disable_response_storage = true",
+    'api_format = "openai_chat"',
+    "",
+    "[model_providers.custom]",
+    'name = "custom"',
+    'base_url = ""',
+    'wire_api = "responses"',
+    "requires_openai_auth = true",
+    'api_format = "openai_chat"',
+    'experimental_bearer_token = ""',
+    "",
+  ].join("\n");
 }
 
 function isStarlingModelProfilePath(filePath: string): boolean {

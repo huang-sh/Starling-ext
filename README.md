@@ -73,16 +73,17 @@ Use the Models view title bar to create a model profile template. The extension 
 
 ```text
 ~/.starling/settings/claude/<name>.json
-~/.starling/settings/codex/<name>.json
+~/.starling/settings/codex/<name>.toml
 ```
 
-and opens the JSON file in VS Code for editing.
+and opens the profile file in VS Code for editing.
 
 Right-click a model profile to:
 
 - Open the model settings file.
 - Start a new agent session.
 - Start a new agent session in a catalog.
+- Delete the Starling model profile.
 
 ### Sessions
 
