@@ -134,6 +134,7 @@ Common commands:
 ```json
 {
   "starling.cliPath": "starling",
+  "starling.homePath": "",
   "starling.cacheTtlSeconds": 30,
   "starling.projectSessionLimit": 30,
   "starling.sessionTreeLimit": 50
@@ -143,6 +144,10 @@ Common commands:
 ### `starling.cliPath`
 
 Path to the Starling CLI executable. Use an absolute path if the VS Code extension host cannot find `starling` on `PATH`.
+
+### `starling.homePath`
+
+Optional Starling data directory. Leave empty to use `~/.starling`. When set, the extension passes this path as `STARLING_HOME` to the Starling CLI.
 
 ### `starling.cacheTtlSeconds`
 
@@ -163,6 +168,8 @@ Starling stores metadata and indexes under:
 ```text
 ~/.starling/
 ```
+
+Set `starling.homePath` to use a different directory.
 
 The extension reads this data through the Starling CLI. It does not upload session contents.
 

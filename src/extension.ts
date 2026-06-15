@@ -50,6 +50,15 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("starling")) {
+        refreshAllViews();
+        void checkStarlingCliOnActivation();
+      }
+    })
+  );
+
   void checkStarlingCliOnActivation();
 
   // Core actions
@@ -1201,8 +1210,14 @@ function extractSessionId(node: unknown): string | undefined {
 
 function extractProjectPath(node: unknown): string | undefined {
   if (!node) return undefined;
-  const obj = node as HasSessionMeta & { summary?: { project_path: string } };
+  const obj = node as HasSessionMeta & {
+    summary?: { project_path: string };
+    directory?: { realPath?: string; displayPath?: string; fullPath?: string };
+  };
   if (obj.project?.project_path) return obj.project.project_path;
+  if (obj.directory?.realPath) return obj.directory.realPath;
+  if (obj.directory?.displayPath) return obj.directory.displayPath;
+  if (obj.directory?.fullPath) return obj.directory.fullPath;
   if (obj.bookmark?.project_path) return obj.bookmark.project_path;
   if (obj.meta?.project_path) return obj.meta.project_path;
   if (obj.summary?.project_path) return obj.summary.project_path;

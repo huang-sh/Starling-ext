@@ -148,7 +148,7 @@ function getCachedResult<T>(cacheKey: string, fetcher: () => Promise<T>): Promis
 
 function cacheKeyForCommand(args: string[]): string {
   const command = starlingCommand(args);
-  return [command.file, ...command.args].join("\u0000");
+  return [command.file, starlingHomePath() ?? "", ...command.args].join("\u0000");
 }
 
 export function clearCliCache(prefix?: string): void {
@@ -167,6 +167,12 @@ function starlingBin(): string {
   return vscode.workspace.getConfiguration("starling").get<string>("cliPath", "starling");
 }
 
+function starlingHomePath(): string | undefined {
+  const configured = vscode.workspace.getConfiguration("starling").get<string>("homePath", "");
+  const trimmed = configured.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 function starlingCommand(args: string[]): { file: string; args: string[] } {
   const configured = process.env.STARLING_BIN;
   if (configured) {
@@ -177,8 +183,10 @@ function starlingCommand(args: string[]): { file: string; args: string[] } {
 
 async function execStarlingRaw(args: string[], options: Partial<CliExecOptions> = {}): Promise<string> {
   const command = starlingCommand(args);
+  const starlingHome = starlingHomePath();
   try {
     const { stdout } = await execFileAsync(command.file, command.args, {
+      env: starlingHome ? { ...process.env, STARLING_HOME: starlingHome } : process.env,
       maxBuffer: options.maxBuffer ?? DEFAULT_MAX_BUFFER,
       timeout: options.timeout ?? DEFAULT_TEXT_TIMEOUT,
     });

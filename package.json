@@ -2,7 +2,7 @@
   "name": "starling-ai",
   "displayName": "Starling Agent",
   "description": "Agent session manager — discover, pin, and organize AI coding sessions",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "publisher": "huangsh",
   "icon": "icons/starling.png",
   "license": "MIT",
@@ -319,12 +319,12 @@
         },
         {
           "command": "starling.openProject",
-          "when": "viewItem == project",
+          "when": "viewItem == project || viewItem == project-folder",
           "group": "projectContext@1"
         },
         {
           "command": "starling.copyProject",
-          "when": "viewItem == project",
+          "when": "viewItem == project || viewItem == project-folder",
           "group": "projectContext@2"
         },
         {
@@ -408,6 +408,11 @@
           "type": "string",
           "default": "starling",
           "description": "Path to the Starling CLI executable. Use an absolute path if the VS Code extension host cannot find starling on PATH."
+        },
+        "starling.homePath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Starling data directory. Leave empty to use ~/.starling. When set, the extension passes this path as STARLING_HOME to the Starling CLI."
         },
         "starling.cacheTtlSeconds": {
           "type": "number",

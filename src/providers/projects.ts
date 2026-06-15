@@ -15,6 +15,7 @@ const STARLING_SESSION_INDEX_FILE = "project-session-index.json";
 type TreeNode =
   | ProjectDirectoryNode
   | ProjectNode
+  | ProjectSessionsGroupNode
   | ProjectSessionNode
   | LoadMoreProjectSessionsNode
   | vscode.TreeItem;
@@ -22,9 +23,10 @@ type TreeNode =
 type ProjectDirectoryTree = {
   name: string;
   fullPath: string;
+  realPath: string;
   displayPath: string;
   folders: Map<string, ProjectDirectoryTree>;
-  projects: cli.ProjectSummary[];
+  project?: cli.ProjectSummary;
 };
 
 type CachedIndexRecord = {
@@ -45,7 +47,7 @@ class ProjectDirectoryNode extends vscode.TreeItem {
     super(directory.name, vscode.TreeItemCollapsibleState.Collapsed);
     this.contextValue = "project-folder";
     this.iconPath = new vscode.ThemeIcon("folder");
-    this.tooltip = directory.displayPath || directory.fullPath || "Projects";
+    this.tooltip = directory.realPath || directory.displayPath || directory.fullPath || "Projects";
     this.description = directoryDescription(directory);
   }
 }
@@ -62,7 +64,7 @@ class ProjectNode extends vscode.TreeItem {
     super(truncate(shortLabel, PROJECT_NODE_MAX_LABEL), state);
 
     this.project = project;
-    this.description = sessions > 0 ? `${sessions}` : "";
+    this.description = sessions > 0 ? `${sessions} session${sessions === 1 ? "" : "s"}` : "";
     this.tooltip = [
       `Project: ${project.project_path}`,
       `Sessions: ${sessions}`,
@@ -95,6 +97,23 @@ class ProjectSessionNode extends vscode.TreeItem {
     ].join("\n");
     this.contextValue = "project-session";
     this.iconPath = new vscode.ThemeIcon("history");
+  }
+}
+
+class ProjectSessionsGroupNode extends vscode.TreeItem {
+  constructor(public readonly project: cli.ProjectSummary) {
+    const count = project.session_count ?? 0;
+    super("Sessions", count > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
+    this.contextValue = "project-sessions-group";
+    this.iconPath = new vscode.ThemeIcon("history");
+    this.description = count > 0 ? `${count}` : "";
+    this.tooltip = [
+      `Project: ${project.project_path}`,
+      `Sessions: ${count}`,
+      `Agents: ${formatAgents(project.agents)}`,
+      `Top model: ${formatTopModel(project.models)}`,
+      `Last active: ${project.last_active || "-"}`,
+    ].join("\n");
   }
 }
 
@@ -203,6 +222,11 @@ export class ProjectsProvider implements vscode.TreeDataProvider<TreeNode> {
       return getDirectoryChildrenNodes(element.directory);
     }
     if (element instanceof ProjectNode) {
+      return element.project.session_count > 0
+        ? [new ProjectSessionsGroupNode(element.project)]
+        : [new vscode.TreeItem("(no sessions)", vscode.TreeItemCollapsibleState.None)];
+    }
+    if (element instanceof ProjectSessionsGroupNode) {
       try {
         const normalizedPath = normalizePathForTree(element.project.project_path);
         const projectSessions = await this.getProjectSessionsForProject(normalizedPath);
@@ -423,12 +447,18 @@ async function loadProjectsForTree(): Promise<cli.ProjectSummary[]> {
 
 function getDirectoryChildrenNodes(directory: ProjectDirectoryTree): TreeNode[] {
   const folderNodes = Array.from(directory.folders.values()).sort((a, b) => a.name.localeCompare(b.name));
-  const projectNodes = directory.projects
-    .slice()
-    .sort((a, b) => a.project_path.localeCompare(b.project_path))
-    .map((project) => new ProjectNode(project));
+  const children: TreeNode[] = folderNodes.map((folder) => {
+    if (folder.project && folder.folders.size === 0) {
+      return new ProjectNode(folder.project);
+    }
+    return new ProjectDirectoryNode(folder);
+  });
 
-  return [...folderNodes.map((folder) => new ProjectDirectoryNode(folder)), ...projectNodes];
+  if (directory.project) {
+    children.push(new ProjectSessionsGroupNode(directory.project));
+  }
+
+  return children;
 }
 
 function buildProjectTree(projects: cli.ProjectSummary[]): ProjectDirectoryTree {
@@ -436,22 +466,20 @@ function buildProjectTree(projects: cli.ProjectSummary[]): ProjectDirectoryTree 
   const root: ProjectDirectoryTree = {
     name: "",
     fullPath: "",
+    realPath: "",
     displayPath: "",
     folders: new Map(),
-    projects: [],
   };
 
   for (const project of projects) {
     const normalized = normalizePathForTree(project.project_path);
     const segments = projectTreeSegments(normalized, displayRoot);
-    const leaf = segments[segments.length - 1] ?? "";
-    if (segments.length <= 1) {
-      root.projects.push(project);
+    if (segments.length === 0) {
       continue;
     }
 
     let current = root;
-    for (let i = 0; i < segments.length - 1; i += 1) {
+    for (let i = 0; i < segments.length; i += 1) {
       const segment = segments[i];
       const nextPath = current.fullPath ? `${current.fullPath}/${segment}` : segment;
       const existing = current.folders.get(segment);
@@ -463,16 +491,14 @@ function buildProjectTree(projects: cli.ProjectSummary[]): ProjectDirectoryTree 
       const next: ProjectDirectoryTree = {
         name: segment,
         fullPath: nextPath,
+        realPath: realPathForProjectPrefix(normalized, segments.slice(0, i + 1)),
         displayPath: displayPathForTreePath(nextPath),
         folders: new Map(),
-        projects: [],
       };
       current.folders.set(segment, next);
       current = next;
     }
-    if (leaf) {
-      current.projects.push(project);
-    }
+    current.project = project;
   }
 
   return sortTree(root);
@@ -593,6 +619,28 @@ function displayPathForTreePath(treePath: string): string {
   return treePath.replace(/\/…\//g, "/");
 }
 
+function realPathForTreePath(treePath: string, displayRoot: string): string {
+  const normalizedTreePath = normalizePathForTree(treePath);
+  if (!normalizedTreePath) return "";
+  if (normalizedTreePath.startsWith("/")) return normalizedTreePath;
+  const normalizedRoot = normalizePathForTree(displayRoot);
+  return normalizedRoot ? `${normalizedRoot}/${normalizedTreePath}` : normalizedTreePath;
+}
+
+function realPathForProjectPrefix(projectPath: string, prefixSegments: string[]): string {
+  const projectSegments = projectPath.split("/").filter(Boolean);
+  if (prefixSegments.length === 0) return projectPath;
+
+  for (let start = projectSegments.length - prefixSegments.length; start >= 0; start -= 1) {
+    const matches = prefixSegments.every((segment, index) => projectSegments[start + index] === segment);
+    if (matches) {
+      return `/${projectSegments.slice(0, start + prefixSegments.length).join("/")}`;
+    }
+  }
+
+  return realPathForTreePath(prefixSegments.join("/"), "");
+}
+
 function sortTree(directory: ProjectDirectoryTree): ProjectDirectoryTree {
   const folders = new Map<string, ProjectDirectoryTree>();
   const sortedFolders = Array.from(directory.folders.entries()).sort((a, b) => a[0].localeCompare(b[0]));
@@ -600,7 +648,6 @@ function sortTree(directory: ProjectDirectoryTree): ProjectDirectoryTree {
     folders.set(name, sortTree(folder));
   }
   directory.folders = folders;
-  directory.projects.sort((a, b) => a.project_path.localeCompare(b.project_path));
   return directory;
 }
 
@@ -610,7 +657,7 @@ function normalizePathForTree(value: string): string {
 
 function directoryDescription(directory: ProjectDirectoryTree): string {
   const folderCount = directory.folders.size;
-  const projectCount = directory.projects.length;
+  const projectCount = countProjects(directory);
   const parts: string[] = [];
   if (folderCount > 0) {
     parts.push(`${folderCount} folder${folderCount === 1 ? "" : "s"}`);
@@ -618,7 +665,18 @@ function directoryDescription(directory: ProjectDirectoryTree): string {
   if (projectCount > 0) {
     parts.push(`${projectCount} project${projectCount === 1 ? "" : "s"}`);
   }
+  if (directory.project?.session_count) {
+    parts.push(`${directory.project.session_count} session${directory.project.session_count === 1 ? "" : "s"}`);
+  }
   return parts.join(", ");
+}
+
+function countProjects(directory: ProjectDirectoryTree): number {
+  let count = directory.project ? 1 : 0;
+  for (const child of directory.folders.values()) {
+    count += countProjects(child);
+  }
+  return count;
 }
 
 function lastPathSegment(pathValue: string): string {
