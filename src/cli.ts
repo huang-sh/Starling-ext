@@ -379,6 +379,57 @@ export async function getSession(id: string): Promise<SessionMeta> {
   return getCachedResult<SessionMeta>(`sessionGet:${cacheKeyForCommand(args)}`, () => execStarlingJson<SessionMeta>(args));
 }
 
+// Latch flipped on when the running starling CLI predates `session lookup`,
+// so we fall back to the per-id `getSession` loop instead of erroring.
+let legacySessionLookup = false;
+
+/**
+ * Resolve many sessions in a single `starling session lookup <id...> --json`
+ * subprocess. Falls back to per-id `getSession` calls if the CLI lacks the
+ * subcommand. Result is keyed by canonical session_id.
+ */
+export async function getSessions(sessionIds: string[]): Promise<Map<string, SessionMeta>> {
+  const result = new Map<string, SessionMeta>();
+  const unique = [...new Set(sessionIds)];
+  if (unique.length === 0) return result;
+
+  if (legacySessionLookup) {
+    return resolveSessionsLegacy(unique);
+  }
+
+  const sorted = [...unique].sort();
+  const cacheKey = `sessionLookup:${sorted.join("\u0000")}`;
+  try {
+    const sessions = await getCachedResult<SessionMeta[]>(cacheKey, async () => {
+      const args = ["session", "lookup", ...sorted, "--json"];
+      return execStarlingJson<SessionMeta[]>(args, { timeout: DEFAULT_JSON_TIMEOUT });
+    });
+    for (const session of sessions) {
+      if (session?.session_id) result.set(session.session_id, session);
+    }
+    return result;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/"lookup"|unknown command|invalid JSON/i.test(message)) {
+      legacySessionLookup = true;
+      return resolveSessionsLegacy(unique);
+    }
+    throw err;
+  }
+}
+
+async function resolveSessionsLegacy(sessionIds: string[]): Promise<Map<string, SessionMeta>> {
+  const result = new Map<string, SessionMeta>();
+  const outcomes = await Promise.allSettled(sessionIds.map((id) => getSession(id)));
+  for (let index = 0; index < sessionIds.length; index += 1) {
+    const outcome = outcomes[index];
+    if (outcome.status === "fulfilled") {
+      result.set(sessionIds[index], outcome.value);
+    }
+  }
+  return result;
+}
+
 export async function getSessionText(id: string): Promise<string> {
   return execStarlingRaw(["session", "show", id]);
 }

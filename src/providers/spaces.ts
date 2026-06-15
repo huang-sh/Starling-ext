@@ -127,19 +127,24 @@ export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
       this.sessionLoads.add(sessionId);
     }
 
-    void Promise.allSettled(
-      pending.map(async (sessionId) => {
-        const session = await cli.getSession(sessionId);
-        this.sessionLookup.set(sessionId, session);
+    void cli.getSessions(pending)
+      .then((sessions) => {
+        for (const sessionId of pending) {
+          this.sessionLoads.delete(sessionId);
+          const session = sessions.get(sessionId);
+          if (session) {
+            this.sessionLookup.set(sessionId, session);
+          }
+        }
+        if (sessions.size > 0) {
+          this._onDidChange.fire();
+        }
       })
-    ).then((results) => {
-      for (let index = 0; index < pending.length; index += 1) {
-        this.sessionLoads.delete(pending[index]);
-      }
-      if (results.some((result) => result.status === "fulfilled")) {
-        this._onDidChange.fire();
-      }
-    });
+      .catch(() => {
+        for (const sessionId of pending) {
+          this.sessionLoads.delete(sessionId);
+        }
+      });
   }
 }
 
