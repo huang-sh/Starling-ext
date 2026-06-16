@@ -49,10 +49,13 @@
     "onCommand:starling.catalogRemove",
     "onCommand:starling.catalogRename",
     "onCommand:starling.catalogDelete",
+    "onCommand:starling.catalogDeleteWithSessions",
     "onCommand:starling.catalogTag",
     "onCommand:starling.catalogEdit",
     "onCommand:starling.catalogCopyName",
     "onCommand:starling.catalogCopyId",
+    "onCommand:starling.catalogRunClaude",
+    "onCommand:starling.catalogRunCodex",
     "onCommand:starling.projectList",
     "onCommand:starling.projectShow",
     "onCommand:starling.openProject",
@@ -96,170 +99,232 @@
     "commands": [
       {
         "command": "starling.refresh",
-        "title": "Starling: Refresh"
+        "category": "Starling",
+        "title": "Refresh"
       },
       {
         "command": "starling.resume",
-        "title": "Starling: Resume Session",
+        "category": "Starling",
+        "title": "Resume Session",
         "icon": "$(play)"
       },
       {
         "command": "starling.pin",
-        "title": "Starling: Pin Session",
+        "category": "Starling",
+        "title": "Pin Session",
         "icon": "$(pin)"
       },
       {
         "command": "starling.pinToSpace",
-        "title": "Starling: Pin to Catalog"
+        "category": "Starling",
+        "title": "Pin to Catalog"
       },
       {
         "command": "starling.removePin",
-        "title": "Starling: Remove Pin",
+        "category": "Starling",
+        "title": "Remove Pin",
         "icon": "$(pinned-dirty)"
       },
       {
         "command": "starling.deleteSession",
-        "title": "Starling: Delete Session",
+        "category": "Starling",
+        "title": "Delete Session",
         "icon": "$(trash)"
       },
       {
         "command": "starling.showSession",
-        "title": "Starling: Show Session Details",
+        "category": "Starling",
+        "title": "Show Session Details",
         "icon": "$(eye)"
       },
       {
         "command": "starling.sessionList",
-        "title": "Starling: List Sessions"
+        "category": "Starling",
+        "title": "List Sessions"
       },
       {
         "command": "starling.sessionShow",
-        "title": "Starling: Show Session"
+        "category": "Starling",
+        "title": "Show Session"
       },
       {
         "command": "starling.sessionIndexStatus",
-        "title": "Starling: Session Index Status"
+        "category": "Starling",
+        "title": "Session Index Status"
       },
       {
         "command": "starling.sessionIndexRebuild",
-        "title": "Starling: Rebuild Session Index"
+        "category": "Starling",
+        "title": "Rebuild Session Index"
       },
       {
         "command": "starling.sessionIndexClear",
-        "title": "Starling: Clear Session Index"
+        "category": "Starling",
+        "title": "Clear Session Index"
       },
       {
         "command": "starling.loadMoreSessions",
-        "title": "Starling: Load More Sessions"
+        "category": "Starling",
+        "title": "Load More Sessions"
       },
       {
         "command": "starling.loadMoreProjectSessions",
-        "title": "Starling: Load More Project Sessions"
+        "category": "Starling",
+        "title": "Load More Project Sessions"
       },
       {
         "command": "starling.modelList",
-        "title": "Starling: List Models"
+        "category": "Starling",
+        "title": "List Models"
       },
       {
         "command": "starling.modelAdd",
-        "title": "Starling: Add Model",
+        "category": "Starling",
+        "title": "Add Model",
         "icon": "$(add)"
       },
       {
         "command": "starling.modelOpenSettings",
-        "title": "Starling: Open Model Settings",
+        "category": "Starling",
+        "title": "Open Model Settings",
         "icon": "$(go-to-file)"
       },
       {
         "command": "starling.modelStart",
-        "title": "Starling: Start Agent",
+        "category": "Starling",
+        "title": "Start Agent",
         "icon": "$(play)"
       },
       {
         "command": "starling.modelStartInCatalog",
-        "title": "Starling: Start Agent in Catalog",
+        "category": "Starling",
+        "title": "Start Agent in Catalog",
         "icon": "$(play)"
       },
       {
         "command": "starling.modelDelete",
-        "title": "Starling: Delete Model Profile",
+        "category": "Starling",
+        "title": "Delete Model Profile",
         "icon": "$(trash)"
       },
       {
         "command": "starling.catalogList",
-        "title": "Starling: List Catalogs"
+        "category": "Starling",
+        "title": "List Catalogs"
       },
       {
         "command": "starling.catalogTree",
-        "title": "Starling: Catalog Tree"
+        "category": "Starling",
+        "title": "Catalog Tree"
       },
       {
         "command": "starling.catalogShow",
-        "title": "Starling: Show Catalog"
+        "category": "Starling",
+        "title": "Show Catalog"
       },
       {
         "command": "starling.catalogCreate",
-        "title": "Starling: Create Catalog",
+        "category": "Starling",
+        "title": "Create Catalog",
         "icon": "$(add)"
       },
       {
         "command": "starling.catalogCreateChild",
-        "title": "Starling: Create Child Catalog",
+        "category": "Starling",
+        "title": "Create Child Catalog",
         "icon": "$(add)"
       },
       {
         "command": "starling.catalogRemove",
-        "title": "Starling: Remove Catalog"
+        "category": "Starling",
+        "title": "Remove Catalog"
       },
       {
         "command": "starling.catalogRename",
-        "title": "Starling: Rename Catalog",
+        "category": "Starling",
+        "title": "Rename Catalog",
         "icon": "$(edit)"
       },
       {
         "command": "starling.catalogDelete",
-        "title": "Starling: Delete Catalog",
+        "category": "Starling",
+        "title": "Delete Catalog",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "starling.catalogDeleteWithSessions",
+        "category": "Starling",
+        "title": "Delete Catalog with Sessions",
         "icon": "$(trash)"
       },
       {
         "command": "starling.catalogTag",
-        "title": "Starling: Tag Catalog"
+        "category": "Starling",
+        "title": "Tag Catalog"
       },
       {
         "command": "starling.catalogEdit",
-        "title": "Starling: Edit Catalog"
+        "category": "Starling",
+        "title": "Edit Catalog"
       },
       {
         "command": "starling.catalogCopyName",
-        "title": "Starling: Copy Catalog Name",
+        "category": "Starling",
+        "title": "Copy Catalog Name",
         "icon": "$(copy)"
       },
       {
         "command": "starling.catalogCopyId",
-        "title": "Starling: Copy Catalog ID",
+        "category": "Starling",
+        "title": "Copy Catalog ID",
         "icon": "$(copy)"
       },
       {
+        "command": "starling.catalogRunClaude",
+        "category": "Starling",
+        "title": "Claude",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "starling.catalogRunCodex",
+        "category": "Starling",
+        "title": "Codex",
+        "icon": "$(terminal)"
+      },
+      {
         "command": "starling.projectList",
-        "title": "Starling: List Projects"
+        "category": "Starling",
+        "title": "List Projects"
       },
       {
         "command": "starling.projectShow",
-        "title": "Starling: Show Project"
+        "category": "Starling",
+        "title": "Show Project"
       },
       {
         "command": "starling.openProject",
-        "title": "Starling: Open Project in New Window",
+        "category": "Starling",
+        "title": "Open Project in New Window",
         "icon": "$(window)"
       },
       {
         "command": "starling.copyProject",
-        "title": "Starling: Copy Project Path",
+        "category": "Starling",
+        "title": "Copy Project Path",
         "icon": "$(copy)"
       },
       {
         "command": "starling.copySessionId",
-        "title": "Starling: Copy Session ID",
+        "category": "Starling",
+        "title": "Copy Session ID",
         "icon": "$(copy)"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "starling.runAgentMenu",
+        "label": "Run Agent",
+        "icon": "$(play)"
       }
     ],
     "menus": {
@@ -340,6 +405,11 @@
           "group": "projectContext@2"
         },
         {
+          "submenu": "starling.runAgentMenu",
+          "when": "viewItem == catalog",
+          "group": "catalogContext@0"
+        },
+        {
           "command": "starling.catalogCreateChild",
           "when": "viewItem == catalog",
           "group": "catalogContext@1"
@@ -355,19 +425,24 @@
           "group": "catalogContext@3"
         },
         {
-          "command": "starling.catalogEdit",
+          "command": "starling.catalogDeleteWithSessions",
           "when": "viewItem == catalog",
           "group": "catalogContext@4"
         },
         {
-          "command": "starling.catalogCopyName",
+          "command": "starling.catalogEdit",
           "when": "viewItem == catalog",
           "group": "catalogContext@5"
         },
         {
-          "command": "starling.catalogCopyId",
+          "command": "starling.catalogCopyName",
           "when": "viewItem == catalog",
           "group": "catalogContext@6"
+        },
+        {
+          "command": "starling.catalogCopyId",
+          "when": "viewItem == catalog",
+          "group": "catalogContext@7"
         },
         {
           "command": "starling.resume",
@@ -420,6 +495,26 @@
           "command": "starling.refresh",
           "when": "view == starling-sessions || view == starling-spaces || view == starling-projects || view == starling-models",
           "group": "navigation@9"
+        }
+      ],
+      "starling.runAgentMenu": [
+        {
+          "command": "starling.catalogRunClaude",
+          "group": "navigation@1"
+        },
+        {
+          "command": "starling.catalogRunCodex",
+          "group": "navigation@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "starling.catalogRunClaude",
+          "when": "false"
+        },
+        {
+          "command": "starling.catalogRunCodex",
+          "when": "false"
         }
       ]
     },

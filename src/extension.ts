@@ -499,6 +499,63 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand("starling.catalogDeleteWithSessions", async (node: unknown) => {
+      const space = await pickSpaceFromNode(node);
+      if (!space) return;
+
+      const allSpaces = (await cli.listSpaces(true)) as cli.SpaceWithPins[];
+      const subtreeIds = new Set<string>([space.id]);
+      const stack = [space.id];
+      while (stack.length > 0) {
+        const current = stack.pop()!;
+        for (const candidate of allSpaces) {
+          if (candidate.parent_id === current && !subtreeIds.has(candidate.id)) {
+            subtreeIds.add(candidate.id);
+            stack.push(candidate.id);
+          }
+        }
+      }
+
+      const sessionIds = new Set<string>();
+      for (const candidate of allSpaces) {
+        if (!subtreeIds.has(candidate.id)) continue;
+        for (const pin of candidate.pins ?? []) {
+          if (pin.session_id) sessionIds.add(pin.session_id);
+        }
+      }
+
+      const sessionCount = sessionIds.size;
+      const childCount = subtreeIds.size - 1;
+      const detail = [
+        childCount > 0 ? `Deletes ${childCount} child catalog${childCount === 1 ? "" : "s"} and "${space.name}".` : `Deletes catalog "${space.name}".`,
+        sessionCount > 0
+          ? `${sessionCount} pinned session${sessionCount === 1 ? "" : "s"} will be permanently deleted. Sessions pinned to other catalogs are also removed from those.`
+          : "No pinned sessions to delete.",
+      ].join("\n");
+
+      const confirm = await vscode.window.showWarningMessage(
+        `Delete "${space.name}"${sessionCount > 0 ? " with all sessions" : ""}?`,
+        { modal: true, detail },
+        "Delete"
+      );
+      if (confirm !== "Delete") return;
+
+      try {
+        for (const sessionId of sessionIds) {
+          await cli.deleteSession(sessionId);
+        }
+        await cli.removeCatalog(space.id);
+        vscode.window.showInformationMessage(
+          `Deleted catalog "${space.name}"${sessionCount > 0 ? ` and ${sessionCount} session${sessionCount === 1 ? "" : "s"}` : ""}.`
+        );
+        refreshAllViews();
+      } catch (err) {
+        await showCommandError("Delete catalog with sessions", err);
+      }
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand("starling.catalogTag", async () => {
       const space = await pickSpace();
       if (!space) return;
@@ -580,6 +637,18 @@ export function activate(context: vscode.ExtensionContext): void {
       } catch (err) {
         await showCommandError("Copy catalog ID", err);
       }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("starling.catalogRunClaude", async (node: unknown) => {
+      await runAgentInCatalog(node, "claude");
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("starling.catalogRunCodex", async (node: unknown) => {
+      await runAgentInCatalog(node, "codex");
     })
   );
 
@@ -808,6 +877,41 @@ async function startModelSessionInTerminal(model: cli.ModelConfigSummary, catalo
   });
   terminal.sendText(`starling ${args.join(" ")}`);
   terminal.show();
+}
+
+async function runAgentInCatalog(node: unknown, agent: "claude" | "codex"): Promise<void> {
+  const space = await pickSpaceFromNode(node);
+  if (!space) return;
+
+  let models: cli.ModelConfigSummary[];
+  try {
+    models = (await cli.listModels()).filter((model) => model.agent === agent);
+  } catch (err) {
+    await showCommandError(`Run ${agent} in catalog`, err);
+    return;
+  }
+
+  if (models.length === 0) {
+    vscode.window.showInformationMessage(`No ${agent} model profiles found.`);
+    return;
+  }
+
+  const picked = await vscode.window.showQuickPick(
+    models.map((model): QuickPickItem<cli.ModelConfigSummary> => ({
+      label: model.scope === "current" && model.name === "current" ? "default" : model.name,
+      description: model.model || "-",
+      detail: model.source,
+      value: model,
+    })),
+    { placeHolder: `Select a ${agent} model to run in "${space.name}"` }
+  );
+  if (!picked) return;
+
+  try {
+    await startModelSessionInTerminal(picked.value, space.name);
+  } catch (err) {
+    await showCommandError(`Run ${agent} in catalog`, err);
+  }
 }
 
 async function openModelSettings(model: cli.ModelConfigSummary): Promise<void> {
