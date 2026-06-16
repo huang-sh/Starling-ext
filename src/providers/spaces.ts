@@ -34,12 +34,13 @@ class SpaceNode extends vscode.TreeItem {
 
 class PinNode extends vscode.TreeItem {
   constructor(public readonly bookmark: cli.Bookmark, public readonly session?: cli.SessionMeta) {
+    const hasTitle = Boolean(bookmark.title && bookmark.title.trim());
     super(
-      truncate(bookmark.title || shortSessionId(bookmark.session_id) + "…"),
+      truncate(hasTitle ? bookmark.title : shortSessionId(bookmark.session_id) + "…"),
       vscode.TreeItemCollapsibleState.None
     );
-    const short = shortSessionId(bookmark.session_id);
-    this.description = short;
+    // Display title and session ID exclusively: prefer title, fall back to session ID.
+    this.description = hasTitle ? "" : shortSessionId(bookmark.session_id);
     this.tooltip = mdTooltip([
       ["Pin", `\`${bookmark.id}\``],
       ["Session", `\`${bookmark.session_id}\``],
