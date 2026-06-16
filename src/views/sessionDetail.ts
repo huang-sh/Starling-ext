@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import * as cli from "../cli";
-import { shortSessionId } from "../sessionDisplay";
+import { formatTokenUsage, shortSessionId } from "../sessionDisplay";
 
 const PANEL_TITLE = "Session Detail";
 
@@ -114,18 +114,6 @@ export class SessionDetailPanel {
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-function formatTokenUsage(tokenUsage?: cli.TokenUsage): string {
-  if (!tokenUsage) {
-    return "unknown";
-  }
-
-  const input = tokenUsage.input_tokens ?? "-";
-  const output = tokenUsage.output_tokens ?? "-";
-  const total = tokenUsage.total_tokens ?? "-";
-  const cache = tokenUsage.cache_tokens ?? "-";
-  return `input: ${input}, output: ${output}, total: ${total}, cache: ${cache}`;
 }
 
 function formatCatalogs(catalogs?: Array<{ id: string; name: string }>): string {

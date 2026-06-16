@@ -2,7 +2,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as vscode from "vscode";
 import * as cli from "../cli";
-import { shortSessionId } from "../sessionDisplay";
+import { formatTokenUsage, shortSessionId } from "../sessionDisplay";
 import { mdTooltip } from "../tooltip";
 
 const PROJECT_SESSION_LIMIT = 30;
@@ -164,17 +164,6 @@ function truncate(value: string, maxLength: number): string {
   const trimmed = value.trim();
   if (trimmed.length <= maxLength) return trimmed;
   return `…${trimmed.slice(-(maxLength - 1))}`;
-}
-
-function formatTokenUsage(tokenUsage?: cli.TokenUsage): string {
-  if (!tokenUsage) {
-    return "unknown";
-  }
-  const input = tokenUsage.input_tokens ?? "-";
-  const output = tokenUsage.output_tokens ?? "-";
-  const total = tokenUsage.total_tokens ?? "-";
-  const cache = tokenUsage.cache_tokens ?? "-";
-  return `input: ${input}, output: ${output}, total: ${total}, cache: ${cache}`;
 }
 
 export class ProjectsProvider implements vscode.TreeDataProvider<TreeNode> {

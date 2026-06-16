@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import * as cli from "../cli";
-import { shortSessionId } from "../sessionDisplay";
+import { formatTokenUsage, shortSessionId } from "../sessionDisplay";
 import { mdTooltip } from "../tooltip";
 
 // --- Tree item types ---
@@ -161,15 +161,4 @@ function getSessionsLimit(): number {
   const normalized = Number(configured);
   if (!Number.isFinite(normalized)) return 50;
   return Math.max(0, Math.floor(normalized));
-}
-
-function formatTokenUsage(tokenUsage?: cli.TokenUsage): string {
-  if (!tokenUsage) {
-    return "unknown";
-  }
-  const input = tokenUsage.input_tokens ?? "-";
-  const output = tokenUsage.output_tokens ?? "-";
-  const total = tokenUsage.total_tokens ?? "-";
-  const cache = tokenUsage.cache_tokens ?? "-";
-  return `input: ${input}, output: ${output}, total: ${total}, cache: ${cache}`;
 }

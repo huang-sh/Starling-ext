@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import * as cli from "../cli";
-import { shortSessionId } from "../sessionDisplay";
+import { formatTokenUsage, shortSessionId } from "../sessionDisplay";
 import { mdTooltip } from "../tooltip";
 
 // --- Tree item types ---
@@ -153,15 +153,4 @@ export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
 
 function childCatalogs(spaces: cli.SpaceWithPins[], parentId: string): cli.SpaceWithPins[] {
   return spaces.filter((space) => space.parent_id === parentId);
-}
-
-function formatTokenUsage(tokenUsage?: cli.TokenUsage): string {
-  if (!tokenUsage) {
-    return "unknown";
-  }
-  const input = tokenUsage.input_tokens ?? "-";
-  const output = tokenUsage.output_tokens ?? "-";
-  const total = tokenUsage.total_tokens ?? "-";
-  const cache = tokenUsage.cache_tokens ?? "-";
-  return `input: ${input}, output: ${output}, total: ${total}, cache: ${cache}`;
 }
