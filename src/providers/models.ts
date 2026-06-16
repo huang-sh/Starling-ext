@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as cli from "../cli";
+import { mdTooltip } from "../tooltip";
 
 type TreeNode = AgentNode | ModelNode | vscode.TreeItem;
 
@@ -19,16 +20,16 @@ export class ModelNode extends vscode.TreeItem {
     this.contextValue = model.scope === "profile" ? "model-profile" : "model-current";
     this.iconPath = new vscode.ThemeIcon(model.agent === "claude" ? "sparkle" : "terminal");
     this.description = [model.model || "-", model.provider || ""].filter(Boolean).join(" · ");
-    this.tooltip = [
-      `Agent: ${model.agent}`,
-      `Name: ${displayName}`,
-      `Model: ${model.model || "-"}`,
-      `Provider: ${model.provider || "-"}`,
-      `Reasoning: ${model.reasoning || "-"}`,
-      `Auth: ${model.auth || "-"}`,
-      `Source: ${model.source}`,
-      model.error ? `Error: ${model.error}` : "",
-    ].filter(Boolean).join("\n");
+    this.tooltip = mdTooltip([
+      ["Agent", model.agent],
+      ["Name", displayName],
+      ["Model", model.model || "-"],
+      ["Provider", model.provider || "-"],
+      ["Reasoning", model.reasoning || "-"],
+      ["Auth", model.auth || "-"],
+      ["Source", `\`${model.source}\``],
+      model.error ? ["Error", model.error] : ["", ""],
+    ]);
   }
 }
 

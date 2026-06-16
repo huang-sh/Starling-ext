@@ -1,4 +1,7 @@
 import { execFile } from "child_process";
+import { existsSync, readFileSync } from "fs";
+import { homedir } from "os";
+import { join } from "path";
 import { promisify } from "util";
 import * as vscode from "vscode";
 
@@ -167,10 +170,41 @@ function starlingBin(): string {
   return vscode.workspace.getConfiguration("starling").get<string>("cliPath", "starling");
 }
 
-function starlingHomePath(): string | undefined {
+export function starlingHomePath(): string | undefined {
   const configured = vscode.workspace.getConfiguration("starling").get<string>("homePath", "");
   const trimmed = configured.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function expandHomePath(value: string): string {
+  if (value === "~") return homedir();
+  if (value.startsWith("~/")) return join(homedir(), value.slice(2));
+  return value;
+}
+
+/**
+ * Resolve the Starling home directory the same way the CLI does, so direct
+ * file writes land where `starling` will find them.
+ * Order: VS Code `starling.homePath` → STARLING_HOME env → CLI config.json
+ * homePath → ~/.starling default. Mirrors src/constants.ts in the CLI.
+ */
+export function starlingHomeRoot(): string {
+  const configured = starlingHomePath();
+  if (configured) return expandHomePath(configured);
+  const envHome = process.env.STARLING_HOME?.trim();
+  if (envHome) return expandHomePath(envHome);
+  const configPath = process.env.STARLING_CLI_CONFIG?.trim() || join(homedir(), ".config", "starling", "config.json");
+  if (existsSync(configPath)) {
+    try {
+      const parsed = JSON.parse(readFileSync(configPath, "utf-8")) as { homePath?: unknown };
+      if (typeof parsed.homePath === "string" && parsed.homePath.trim()) {
+        return expandHomePath(parsed.homePath.trim());
+      }
+    } catch {
+      // ignore malformed config
+    }
+  }
+  return join(homedir(), ".starling");
 }
 
 function starlingCommand(args: string[]): { file: string; args: string[] } {

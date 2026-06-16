@@ -1,9 +1,9 @@
 import * as fs from "fs/promises";
-import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import * as cli from "../cli";
 import { shortSessionId } from "../sessionDisplay";
+import { mdTooltip } from "../tooltip";
 
 const PROJECT_SESSION_LIMIT = 30;
 const PROJECT_NODE_MAX_LABEL = 32;
@@ -47,7 +47,7 @@ class ProjectDirectoryNode extends vscode.TreeItem {
     super(directory.name, vscode.TreeItemCollapsibleState.Collapsed);
     this.contextValue = "project-folder";
     this.iconPath = new vscode.ThemeIcon("folder");
-    this.tooltip = directory.realPath || directory.displayPath || directory.fullPath || "Projects";
+    this.tooltip = mdTooltip([["Path", `\`${directory.realPath || directory.displayPath || directory.fullPath || "Projects"}\``]]);
     this.description = directoryDescription(directory);
   }
 }
@@ -65,13 +65,13 @@ class ProjectNode extends vscode.TreeItem {
 
     this.project = project;
     this.description = sessions > 0 ? `${sessions} session${sessions === 1 ? "" : "s"}` : "";
-    this.tooltip = [
-      `Project: ${project.project_path}`,
-      `Sessions: ${sessions}`,
-      `Agents: ${formatAgents(project.agents)}`,
-      `Top model: ${formatTopModel(project.models)}`,
-      `Last active: ${project.last_active || "-"}`,
-    ].join("\n");
+    this.tooltip = mdTooltip([
+      ["Project", project.project_path],
+      ["Sessions", `${sessions}`],
+      ["Agents", formatAgents(project.agents)],
+      ["Top model", formatTopModel(project.models)],
+      ["Last active", project.last_active || "-"],
+    ]);
     this.contextValue = "project";
     this.iconPath = new vscode.ThemeIcon("repo");
   }
@@ -86,15 +86,15 @@ class ProjectSessionNode extends vscode.TreeItem {
       vscode.TreeItemCollapsibleState.None
     );
     this.description = meta.project_path ? truncate(meta.project_path, PROJECT_SESSION_DESC_MAX) : "";
-    this.tooltip = [
-      `Session: ${meta.session_id}`,
-      `Provider: ${meta.provider}`,
-      `Model: ${meta.model || "-"}`,
-      `Modified: ${meta.modified_at}`,
-      `Project: ${meta.project_path || "-"}`,
-      `Tokens: ${formatTokenUsage(meta.token_usage)}`,
-      `Last prompt: ${meta.first_prompt ?? "-"}`,
-    ].join("\n");
+    this.tooltip = mdTooltip([
+      ["Session", `\`${meta.session_id}\``],
+      ["Provider", meta.provider],
+      ["Model", meta.model || "-"],
+      ["Modified", meta.modified_at],
+      ["Project", meta.project_path || "-"],
+      ["Tokens", formatTokenUsage(meta.token_usage)],
+      ["Last prompt", meta.first_prompt ?? "-"],
+    ]);
     this.contextValue = "project-session";
     this.iconPath = new vscode.ThemeIcon("history");
   }
@@ -107,13 +107,13 @@ class ProjectSessionsGroupNode extends vscode.TreeItem {
     this.contextValue = "project-sessions-group";
     this.iconPath = new vscode.ThemeIcon("history");
     this.description = count > 0 ? `${count}` : "";
-    this.tooltip = [
-      `Project: ${project.project_path}`,
-      `Sessions: ${count}`,
-      `Agents: ${formatAgents(project.agents)}`,
-      `Top model: ${formatTopModel(project.models)}`,
-      `Last active: ${project.last_active || "-"}`,
-    ].join("\n");
+    this.tooltip = mdTooltip([
+      ["Project", project.project_path],
+      ["Sessions", `${count}`],
+      ["Agents", formatAgents(project.agents)],
+      ["Top model", formatTopModel(project.models)],
+      ["Last active", project.last_active || "-"],
+    ]);
   }
 }
 
@@ -188,7 +188,7 @@ export class ProjectsProvider implements vscode.TreeDataProvider<TreeNode> {
   private projectSessionVisibleLimits = new Map<string, number>();
 
   private get cacheFilePath(): string {
-    return path.join(os.homedir(), ".starling", STARLING_SESSION_INDEX_FILE);
+    return path.join(cli.starlingHomeRoot(), STARLING_SESSION_INDEX_FILE);
   }
 
   refresh(): void {

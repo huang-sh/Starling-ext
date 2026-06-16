@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as cli from "../cli";
 import { shortSessionId } from "../sessionDisplay";
+import { mdTooltip } from "../tooltip";
 
 // --- Tree item types ---
 
@@ -36,16 +37,16 @@ class SessionNode extends vscode.TreeItem {
       : "";
     const pinnedSuffix = isPinned ? " (pinned)" : "";
     this.description = `${shortId}  ${meta.model || ""}  ${project}${pinnedSuffix}`;
-    this.tooltip = [
-      `Session: ${meta.session_id}`,
-      `Agent: ${meta.provider}`,
-      `Model: ${meta.model || "-"}`,
-      `Project: ${meta.project_path || "-"}`,
-      `Modified: ${meta.modified_at}`,
-      `Tokens: ${formatTokenUsage(meta.token_usage)}`,
-      isPinned ? `Pinned: yes` : "Pinned: no",
-      meta.first_prompt ? `Prompt: ${meta.first_prompt}` : "",
-    ].join("\n");
+    this.tooltip = mdTooltip([
+      ["Session", `\`${meta.session_id}\``],
+      ["Agent", meta.provider],
+      ["Model", meta.model || "-"],
+      ["Project", meta.project_path || "-"],
+      ["Modified", meta.modified_at],
+      ["Tokens", formatTokenUsage(meta.token_usage)],
+      ["Pinned", isPinned ? "yes" : "no"],
+      meta.first_prompt ? ["Prompt", meta.first_prompt] : ["", ""],
+    ]);
     this.iconPath = new vscode.ThemeIcon("terminal");
     this.contextValue = isPinned ? "session-pinned" : "session-unpinned";
   }

@@ -51,6 +51,8 @@
     "onCommand:starling.catalogDelete",
     "onCommand:starling.catalogTag",
     "onCommand:starling.catalogEdit",
+    "onCommand:starling.catalogCopyName",
+    "onCommand:starling.catalogCopyId",
     "onCommand:starling.projectList",
     "onCommand:starling.projectShow",
     "onCommand:starling.openProject",
@@ -169,12 +171,12 @@
       },
       {
         "command": "starling.modelStart",
-        "title": "Starling: Start Agent Session",
+        "title": "Starling: Start Agent",
         "icon": "$(play)"
       },
       {
         "command": "starling.modelStartInCatalog",
-        "title": "Starling: Start Agent Session in Catalog",
+        "title": "Starling: Start Agent in Catalog",
         "icon": "$(play)"
       },
       {
@@ -225,6 +227,16 @@
       {
         "command": "starling.catalogEdit",
         "title": "Starling: Edit Catalog"
+      },
+      {
+        "command": "starling.catalogCopyName",
+        "title": "Starling: Copy Catalog Name",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "starling.catalogCopyId",
+        "title": "Starling: Copy Catalog ID",
+        "icon": "$(copy)"
       },
       {
         "command": "starling.projectList",
@@ -298,17 +310,17 @@
           "group": "sessionContext@10"
         },
         {
-          "command": "starling.modelOpenSettings",
+          "command": "starling.modelStart",
           "when": "viewItem == model-profile || viewItem == model-current",
           "group": "modelContext@1"
         },
         {
-          "command": "starling.modelStart",
+          "command": "starling.modelStartInCatalog",
           "when": "viewItem == model-profile || viewItem == model-current",
           "group": "modelContext@2"
         },
         {
-          "command": "starling.modelStartInCatalog",
+          "command": "starling.modelOpenSettings",
           "when": "viewItem == model-profile || viewItem == model-current",
           "group": "modelContext@3"
         },
@@ -346,6 +358,16 @@
           "command": "starling.catalogEdit",
           "when": "viewItem == catalog",
           "group": "catalogContext@4"
+        },
+        {
+          "command": "starling.catalogCopyName",
+          "when": "viewItem == catalog",
+          "group": "catalogContext@5"
+        },
+        {
+          "command": "starling.catalogCopyId",
+          "when": "viewItem == catalog",
+          "group": "catalogContext@6"
         },
         {
           "command": "starling.resume",

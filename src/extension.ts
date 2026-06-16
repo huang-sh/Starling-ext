@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import * as os from "os";
 import * as path from "path";
 import { SessionsProvider } from "./providers/sessions";
 import { SpacesProvider } from "./providers/spaces";
@@ -556,6 +555,34 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand("starling.catalogCopyName", async (node: unknown) => {
+      const space = await pickSpaceFromNode(node);
+      if (!space) return;
+
+      try {
+        await vscode.env.clipboard.writeText(space.name);
+        vscode.window.showInformationMessage(`Copied catalog name: ${space.name}`);
+      } catch (err) {
+        await showCommandError("Copy catalog name", err);
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("starling.catalogCopyId", async (node: unknown) => {
+      const space = await pickSpaceFromNode(node);
+      if (!space) return;
+
+      try {
+        await vscode.env.clipboard.writeText(space.id);
+        vscode.window.showInformationMessage(`Copied catalog ID: ${space.id}`);
+      } catch (err) {
+        await showCommandError("Copy catalog ID", err);
+      }
+    })
+  );
+
   // Command-line parity: project
   context.subscriptions.push(
     vscode.commands.registerCommand("starling.projectList", async () => {
@@ -1042,7 +1069,7 @@ async function collectAndAddModelProfile(): Promise<{ agent: "claude" | "codex";
   if (!name) return undefined;
 
   const extension = agent === "codex" ? ".toml" : ".json";
-  const filePath = path.join(os.homedir(), ".starling", "settings", agent, `${name}${extension}`);
+  const filePath = path.join(cli.starlingHomeRoot(), "settings", agent, `${name}${extension}`);
   const uri = vscode.Uri.file(filePath);
   const exists = await fileExists(uri);
   if (!exists) {
@@ -1177,7 +1204,7 @@ function codexModelProfileTemplateToml(): string {
 
 function isStarlingModelProfilePath(filePath: string): boolean {
   const normalized = filePath.replace(/\\/g, "/");
-  const settingsRoot = path.join(os.homedir(), ".starling", "settings").replace(/\\/g, "/");
+  const settingsRoot = path.join(cli.starlingHomeRoot(), "settings").replace(/\\/g, "/");
   return normalized.startsWith(`${settingsRoot}/claude/`) || normalized.startsWith(`${settingsRoot}/codex/`);
 }
 

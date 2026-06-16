@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as cli from "../cli";
 import { shortSessionId } from "../sessionDisplay";
+import { mdTooltip } from "../tooltip";
 
 // --- Tree item types ---
 
@@ -19,12 +20,13 @@ class SpaceNode extends vscode.TreeItem {
       childCount > 0 ? `${childCount} child` : "",
       spacePinCount > 0 ? `${spacePinCount} pin` : "",
     ].filter(Boolean).join(" · ");
-    this.tooltip = [
-      `Catalog: ${space.name}`,
-      space.description ?? "",
-      `Tags: ${space.tags.join(", ") || "-"}`,
-      `Created: ${space.created_at}`,
-    ].join("\n");
+    this.tooltip = mdTooltip([
+      ["Catalog", space.name],
+      ["ID", `\`${space.id}\``],
+      ["Description", space.description || "-"],
+      ["Tags", space.tags.join(", ") || "-"],
+      ["Created", space.created_at],
+    ]);
     this.iconPath = new vscode.ThemeIcon("folder");
     this.contextValue = "catalog";
   }
@@ -38,18 +40,18 @@ class PinNode extends vscode.TreeItem {
     );
     const short = shortSessionId(bookmark.session_id);
     this.description = short;
-    this.tooltip = [
-      `Pin: ${bookmark.id}`,
-      `Session: ${bookmark.session_id}`,
-      `Agent: ${session?.provider || bookmark.provider || "-"}`,
-      `Model: ${session?.model || "-"}`,
-      `Project: ${session?.project_path || bookmark.project_path || "-"}`,
-      `Modified: ${session?.modified_at || "-"}`,
-      `Tokens: ${formatTokenUsage(session?.token_usage)}`,
-      `Title: ${bookmark.title || "-"}`,
-      `Tags: ${bookmark.tags.join(", ") || "-"}`,
-      `Created: ${bookmark.created_at}`,
-    ].join("\n");
+    this.tooltip = mdTooltip([
+      ["Pin", `\`${bookmark.id}\``],
+      ["Session", `\`${bookmark.session_id}\``],
+      ["Agent", session?.provider || bookmark.provider || "-"],
+      ["Model", session?.model || "-"],
+      ["Project", session?.project_path || bookmark.project_path || "-"],
+      ["Modified", session?.modified_at || "-"],
+      ["Tokens", formatTokenUsage(session?.token_usage)],
+      ["Title", bookmark.title || "-"],
+      ["Tags", bookmark.tags.join(", ") || "-"],
+      ["Created", bookmark.created_at],
+    ]);
     this.iconPath = new vscode.ThemeIcon("bookmark");
     this.contextValue = "session-pin";
   }
