@@ -18,3 +18,6 @@ pnpm-debug.log*
 # OS/editor noise
 .DS_Store
 Thumbs.db
+
+# Machine-local VS Code settings (starling.cliPath, etc.)
+.vscode/settings.json

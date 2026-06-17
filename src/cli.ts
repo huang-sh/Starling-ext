@@ -223,6 +223,15 @@ async function execStarlingRaw(args: string[], options: Partial<CliExecOptions> 
       env: starlingHome ? { ...process.env, STARLING_HOME: starlingHome } : process.env,
       maxBuffer: options.maxBuffer ?? DEFAULT_MAX_BUFFER,
       timeout: options.timeout ?? DEFAULT_TEXT_TIMEOUT,
+      // On Windows, npm installs three shims for global bins: `starling` (bash),
+      // `starling.cmd` (cmd.exe), `starling.ps1` (PowerShell). Without a shell,
+      // child_process does not consult PATHEXT, so `execFile("starling", ...)`
+      // fails with ENOENT because the literal `starling` file is not the cmd.exe
+      // shim. Routing through cmd.exe lets PATHEXT resolve to `starling.cmd`.
+      // POSIX is unchanged. Args are constructed internally from CLI subcommands
+      // and user-supplied catalog/session/model names; Node's default Windows
+      // argument quoting handles spaces and most metacharacters.
+      shell: process.platform === "win32",
     });
     return stdout as string;
   } catch (err) {
