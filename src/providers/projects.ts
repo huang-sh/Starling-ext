@@ -584,7 +584,7 @@ function workspaceAncestorCandidates(): string[] {
 
 function commonPathPrefix(paths: string[]): string {
   if (paths.length === 0) return "";
-  const splitPaths = paths.map((value) => value.split("/").filter(Boolean));
+  const splitPaths = paths.map((value) => normalizePathForTree(value).split("/").filter(Boolean));
   const prefix: string[] = [];
   const minLength = Math.min(...splitPaths.map((segments) => segments.length));
   for (let index = 0; index < minLength; index += 1) {
@@ -640,7 +640,7 @@ function sortTree(directory: ProjectDirectoryTree): ProjectDirectoryTree {
   return directory;
 }
 
-function normalizePathForTree(value: string): string {
+export function normalizePathForTree(value: string): string {
   return value.trim().replace(/\\/g, "/").replace(/\/+/g, "/").replace(/\/$/, "");
 }
 

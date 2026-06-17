@@ -951,6 +951,9 @@ async function deleteModelProfile(model: cli.ModelConfigSummary): Promise<void> 
 
 function shellArg(value: string): string {
   if (/^[A-Za-z0-9_./:@-]+$/.test(value)) return value;
+  if (process.platform === "win32") {
+    return `"${value.replace(/"/g, '\\"')}"`;
+  }
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
 

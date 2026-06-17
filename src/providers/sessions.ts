@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as cli from "../cli";
 import { formatTokenUsage, shortSessionId } from "../sessionDisplay";
 import { mdTooltip } from "../tooltip";
+import { normalizePathForTree } from "./projects";
 
 // --- Tree item types ---
 
@@ -32,9 +33,8 @@ class SessionNode extends vscode.TreeItem {
       label,
       vscode.TreeItemCollapsibleState.None
     );
-    const project = meta.project_path
-      ? meta.project_path.split("/").slice(-2).join("/")
-      : "";
+    const normalizedProject = normalizePathForTree(meta.project_path || "");
+    const project = normalizedProject ? normalizedProject.split("/").slice(-2).join("/") : "";
     const pinnedSuffix = isPinned ? " (pinned)" : "";
     this.description = `${shortId}  ${meta.model || ""}  ${project}${pinnedSuffix}`;
     this.tooltip = mdTooltip([
