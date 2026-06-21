@@ -2,7 +2,7 @@
   "name": "starling-ai",
   "displayName": "Starling Agent",
   "description": "Agent session manager — discover, pin, and organize AI coding sessions",
-  "version": "0.0.10",
+  "version": "0.1.0",
   "publisher": "huangsh",
   "icon": "icons/starling.png",
   "license": "MIT",
@@ -17,6 +17,8 @@
     "Other"
   ],
   "activationEvents": [
+    "onStartupFinished",
+    "onView:starling-spaces",
     "onView:starling-projects",
     "onView:starling-models",
     "onView:starling-sessions",
@@ -91,7 +93,7 @@
         },
         {
           "id": "starling-sessions",
-          "name": "Sessions",
+          "name": "Monitor",
           "icon": "$(server)"
         }
       ]
@@ -537,6 +539,18 @@
           "description": "How long CLI query results are cached in seconds. Set to 0 to disable cache.",
           "minimum": 0
         },
+        "starling.monitorRefreshSeconds": {
+          "type": "number",
+          "default": 3,
+          "description": "How often the extension refreshes live session status in the background. Set to 0 to use the default.",
+          "minimum": 0
+        },
+        "starling.monitorCacheTtlSeconds": {
+          "type": "number",
+          "default": 2,
+          "description": "How long live monitor snapshots are cached in seconds. The extension keeps the last good snapshot if a refresh fails.",
+          "minimum": 0
+        },
         "starling.projectSessionLimit": {
           "type": "number",
           "default": 30,
@@ -555,7 +569,8 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node --test test/*.test.cjs"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",

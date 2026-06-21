@@ -4,6 +4,7 @@ import { homedir } from "os";
 import { join } from "path";
 import { promisify } from "util";
 import * as vscode from "vscode";
+import { logError } from "./logging";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_MAX_BUFFER = 50 * 1024 * 1024;
@@ -109,12 +110,82 @@ export interface ModelConfigSummary {
   error?: string;
 }
 
+/**
+ * Live per-session status (6 states, mirrors abtop). Sent by the CLI as the
+ * `status` field on every MonitorRow.
+ */
+export type LiveStatus =
+  | "waiting"
+  | "idle"
+  | "running"
+  | "stopped"
+  | "unknown";
+
+export interface MonitorToolCall {
+  name: string;
+  arg: string;
+  duration_ms: number;
+}
+
+export interface MonitorChatMessage {
+  role: "user" | "assistant";
+  text: string;
+}
+
+/**
+ * Live per-session metrics from `starling top --json`. Mirrors the CLI's
+ * MonitorRow shape (Starling/src/commands/monitor.ts).
+ */
+export interface MonitorRow {
+  session_id: string;
+  canonical_session_id: string;
+  pinned: boolean;
+  catalog?: string;
+  title: string;
+  provider: string;
+  model: string;
+  status: LiveStatus;
+  pid?: number;
+  cpu_pct?: number;
+  mem_kb?: number;
+  rss_kb?: number;
+  ctx_pct: number;
+  tokens_in: number;
+  tokens_out: number;
+  tokens_cache: number;
+  last_tool: string | null;
+  tool_count: number;
+  project_path: string;
+  file_path?: string;
+  last_activity_ms: number;
+  // Tier 1 enrichment
+  started_at_ms: number;
+  elapsed_secs: number;
+  pending_since_ms: number;
+  thinking_since_ms: number;
+  token_history: number[];
+  context_history: number[];
+  compaction_count: number;
+  current_task: string;
+  tool_calls_tail: MonitorToolCall[];
+  chat_tail: MonitorChatMessage[];
+}
+
+export interface MonitorSnapshot {
+  pinned_total: number;
+  recent_total: number;
+  active: number;
+  pinned: MonitorRow[];
+  recent: MonitorRow[];
+}
+
 type CacheEntry = {
   expiresAt: number;
   value: Promise<unknown>;
 };
 
 const commandCache = new Map<string, CacheEntry>();
+const monitorCache = new Map<string, { expiresAt: number; value?: MonitorSnapshot; inFlight?: Promise<MonitorSnapshot> }>();
 
 function cacheTtlMs(): number {
   const configured = vscode.workspace.getConfiguration("starling").get<number>("cacheTtlSeconds", DEFAULT_CACHE_TTL_SECONDS);
@@ -157,7 +228,13 @@ function cacheKeyForCommand(args: string[]): string {
 export function clearCliCache(prefix?: string): void {
   if (!prefix) {
     commandCache.clear();
+    monitorCache.clear();
     return;
+  }
+  for (const key of monitorCache.keys()) {
+    if (key.startsWith(prefix)) {
+      monitorCache.delete(key);
+    }
   }
   for (const key of commandCache.keys()) {
     if (key.startsWith(prefix)) {
@@ -236,6 +313,7 @@ async function execStarlingRaw(args: string[], options: Partial<CliExecOptions> 
     return stdout as string;
   } catch (err) {
     if (isCommandNotFoundError(err)) {
+      logError(`Starling CLI not found while running: ${command.file} ${command.args.join(" ")}`, err);
       throw new StarlingCliNotFoundError(command.file);
     }
     const message = err instanceof Error ? err.message : String(err);
@@ -251,7 +329,9 @@ async function execStarlingRaw(args: string[], options: Partial<CliExecOptions> 
     if (stdout) details.push(`stdout=${stdout}`);
     if (stderr) details.push(`stderr=${stderr}`);
     if (anyError?.code !== undefined) details.push(`code=${anyError.code}`);
-    throw new Error(`starling command failed: ${commandText}${details.length ? `: ${details.join(" | ")}` : ""}`);
+    const wrapped = new Error(`starling command failed: ${commandText}${details.length ? `: ${details.join(" | ")}` : ""}`);
+    logError("Starling CLI command failed.", wrapped);
+    throw wrapped;
   }
 }
 
@@ -377,6 +457,165 @@ export async function listSessions(
     if (agent) args.push("--agent", agent);
     return getCachedResult<SessionMeta[]>(`sessionList:${cacheKeyForCommand(args)}`, () => execStarlingJson<SessionMeta[]>(args));
   }
+}
+
+function monitorCacheTtlMs(): number {
+  const configured = vscode.workspace.getConfiguration("starling").get<number>("monitorCacheTtlSeconds", 2);
+  const normalized = Number(configured);
+  if (!Number.isFinite(normalized) || normalized < 0) return 2000;
+  return normalized * 1000;
+}
+
+function normalizeMonitorSnapshot(raw: unknown): MonitorSnapshot {
+  if (Array.isArray(raw)) {
+    const rows = raw.map((row) => normalizeMonitorRow(row));
+    const pinned = rows.filter((row) => row.pinned);
+    const recent = rows.filter((row) => !row.pinned);
+    return {
+      pinned_total: pinned.length,
+      recent_total: recent.length,
+      active: rows.filter((row) => isActiveLiveStatus(row.status)).length,
+      pinned,
+      recent,
+    };
+  }
+
+  const obj = (raw && typeof raw === "object" ? raw : {}) as Partial<MonitorSnapshot>;
+  const pinned = Array.isArray(obj.pinned) ? obj.pinned.map((row) => normalizeMonitorRow(row)) : [];
+  const recent = Array.isArray(obj.recent) ? obj.recent.map((row) => normalizeMonitorRow(row)) : [];
+  return {
+    pinned_total: Number.isFinite(obj.pinned_total) ? Number(obj.pinned_total) : pinned.length,
+    recent_total: Number.isFinite(obj.recent_total) ? Number(obj.recent_total) : recent.length,
+    active: Number.isFinite(obj.active) ? Number(obj.active) : [...pinned, ...recent].filter((row) => isActiveLiveStatus(row.status)).length,
+    pinned,
+    recent,
+  };
+}
+
+function normalizeMonitorRow(raw: unknown): MonitorRow {
+  const row = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const status = normalizeLiveStatus(row.status);
+  const memKb = toNumber(row.mem_kb ?? row.rss_kb, 0);
+  return {
+    session_id: String(row.session_id ?? ""),
+    canonical_session_id: String(row.canonical_session_id ?? row.session_id ?? ""),
+    pinned: Boolean(row.pinned),
+    catalog: typeof row.catalog === "string" ? row.catalog : undefined,
+    title: String(row.title ?? ""),
+    provider: String(row.provider ?? ""),
+    model: String(row.model ?? ""),
+    status,
+    pid: typeof row.pid === "number" ? row.pid : undefined,
+    cpu_pct: typeof row.cpu_pct === "number" ? row.cpu_pct : undefined,
+    mem_kb: memKb,
+    rss_kb: typeof row.rss_kb === "number" ? row.rss_kb : undefined,
+    ctx_pct: toNumber(row.ctx_pct, -1),
+    tokens_in: toNumber(row.tokens_in, 0),
+    tokens_out: toNumber(row.tokens_out, 0),
+    tokens_cache: toNumber(row.tokens_cache, 0),
+    last_tool: typeof row.last_tool === "string" && row.last_tool ? row.last_tool : null,
+    tool_count: toNumber(row.tool_count, 0),
+    project_path: String(row.project_path ?? row.project ?? ""),
+    file_path: typeof row.file_path === "string" ? row.file_path : undefined,
+    last_activity_ms: toNumber(row.last_activity_ms, 0),
+    started_at_ms: toNumber(row.started_at_ms, 0),
+    elapsed_secs: toNumber(row.elapsed_secs, 0),
+    pending_since_ms: toNumber(row.pending_since_ms, 0),
+    thinking_since_ms: toNumber(row.thinking_since_ms, 0),
+    token_history: Array.isArray(row.token_history) ? row.token_history.map((n) => toNumber(n, 0)) : [],
+    context_history: Array.isArray(row.context_history) ? row.context_history.map((n) => toNumber(n, 0)) : [],
+    compaction_count: toNumber(row.compaction_count, 0),
+    current_task: String(row.current_task ?? ""),
+    tool_calls_tail: Array.isArray(row.tool_calls_tail) ? row.tool_calls_tail.map(normalizeMonitorToolCall) : [],
+    chat_tail: Array.isArray(row.chat_tail) ? row.chat_tail.map(normalizeMonitorChatMessage) : [],
+  };
+}
+
+function normalizeLiveStatus(value: unknown): LiveStatus {
+  const status = String(value ?? "").toLowerCase();
+  if (status === "permission" || status === "permission_approval" || status === "approval" || status === "needs_attention") return "waiting";
+  if (status === "waiting" || status === "waiting_input" || status === "waiting_for_input") return "waiting";
+  if (status === "busy" || status === "thinking" || status === "executing" || status === "rate_limited") return "running";
+  if (status === "idle") return "idle";
+  if (status === "running") return "running";
+  if (status === "stopped" || status === "done") return "stopped";
+  return "unknown";
+}
+
+function isActiveLiveStatus(status: LiveStatus): boolean {
+  return status === "waiting" || status === "running";
+}
+
+function normalizeMonitorToolCall(raw: unknown): MonitorToolCall {
+  const row = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return {
+    name: String(row.name ?? ""),
+    arg: String(row.arg ?? ""),
+    duration_ms: toNumber(row.duration_ms, 0),
+  };
+}
+
+function normalizeMonitorChatMessage(raw: unknown): MonitorChatMessage {
+  const row = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const role = row.role === "assistant" ? "assistant" : "user";
+  return {
+    role,
+    text: String(row.text ?? ""),
+  };
+}
+
+function toNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+/**
+ * Fetch the live monitor snapshot (`starling top --json`). Uses a short
+ * live-data cache with stale-on-error behavior so background polling does not
+ * hammer the CLI or blank the UI during transient command failures.
+ */
+export async function getMonitorSnapshot(
+  opts: { recent?: boolean; force?: boolean; allowStale?: boolean } = {}
+): Promise<MonitorSnapshot> {
+  const args = ["top", "--json"];
+  if (opts.recent) args.push("--recent");
+  const cacheKey = `monitor:${cacheKeyForCommand(args)}`;
+  const cached = monitorCache.get(cacheKey);
+  const now = Date.now();
+  if (!opts.force && cached?.value && cached.expiresAt > now) {
+    return cached.value;
+  }
+  if (!opts.force && cached?.inFlight) {
+    return cached.inFlight;
+  }
+
+  const inFlight = execStarlingJson<unknown>(args, { timeout: 30_000 })
+    .then((raw) => {
+      const value = normalizeMonitorSnapshot(raw);
+      monitorCache.set(cacheKey, {
+        expiresAt: Date.now() + monitorCacheTtlMs(),
+        value,
+      });
+      return value;
+    })
+    .catch((err) => {
+      const stale = monitorCache.get(cacheKey)?.value;
+      if (stale && opts.allowStale !== false) {
+        monitorCache.set(cacheKey, {
+          expiresAt: Date.now() + Math.min(monitorCacheTtlMs(), 1000),
+          value: stale,
+        });
+        return stale;
+      }
+      monitorCache.delete(cacheKey);
+      throw err;
+    });
+
+  monitorCache.set(cacheKey, {
+    expiresAt: cached?.expiresAt ?? 0,
+    value: cached?.value,
+    inFlight,
+  });
+  return inFlight;
 }
 
 export async function checkStarlingAvailable(): Promise<void> {
@@ -586,7 +825,7 @@ export async function createCatalog(name: string, opts: { description?: string; 
 }
 
 export async function removeCatalog(name: string): Promise<string> {
-  return execStarlingRaw(["catalog", "delete", name], { timeout: DEFAULT_TEXT_TIMEOUT });
+  return execStarlingRaw(["catalog", "delete", name, "--yes"], { timeout: DEFAULT_TEXT_TIMEOUT });
 }
 
 export async function renameCatalog(name: string, newName: string): Promise<string> {

@@ -6,7 +6,7 @@
 
 Starling Agent is a VS Code sidebar for browsing, resuming, and organizing Claude Code and OpenAI Codex sessions.
 
-It works with the Starling CLI and shows your local agent history in four focused views: Catalog, Projects, Models, and Sessions.
+It works with the Starling CLI and shows your local agent history in four focused views: Catalog, Projects, Models, and Monitor.
 
 ## Requirements
 
@@ -63,7 +63,7 @@ Right-click a project to:
 - Open the project in a new VS Code window.
 - Copy the project path.
 
-Project session nodes support the same session actions as the Sessions view.
+Project session nodes support the same session actions as the Monitor view.
 
 ### Models
 
@@ -85,9 +85,9 @@ Right-click a model profile to:
 - Start a new agent session in a catalog.
 - Delete the Starling model profile.
 
-### Sessions
+### Monitor
 
-Browse recent Claude Code and Codex sessions with incremental loading.
+Monitor pinned, active, and recent Claude Code and Codex sessions with live status, context, token, CPU, memory, and task details.
 
 Right-click a session to:
 
@@ -159,7 +159,7 @@ Number of sessions shown per project node before requiring "Load more". Set to `
 
 ### `starling.sessionTreeLimit`
 
-Number of sessions loaded per batch in the Sessions view. Set to `0` to load all.
+Number of sessions loaded per batch in the Monitor view's static session fallback. Set to `0` to load all.
 
 ## Local Data
 

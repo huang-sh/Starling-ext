@@ -7,8 +7,16 @@ import { ModelsProvider } from "./providers/models";
 import { SessionDetailPanel } from "./views/sessionDetail";
 import * as cli from "./cli";
 import { shortSessionId } from "./sessionDisplay";
+import {
+  clearProblem,
+  disposeLogging,
+  getOutputChannel,
+  initializeLogging,
+  logError,
+  logInfo,
+  reportProblem,
+} from "./logging";
 
-const outputChannel = vscode.window.createOutputChannel("Starling");
 let starlingInstallPromptVisible = false;
 
 interface QuickPickItem<T> extends vscode.QuickPickItem {
@@ -16,12 +24,19 @@ interface QuickPickItem<T> extends vscode.QuickPickItem {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  initializeLogging(context);
+  logInfo("Starling extension activated.");
+
   const sessionsProvider = new SessionsProvider();
   const spacesProvider = new SpacesProvider();
   const projectsProvider = new ProjectsProvider();
   const modelsProvider = new ModelsProvider();
 
-  vscode.window.registerTreeDataProvider("starling-sessions", sessionsProvider);
+  const sessionsTree = vscode.window.createTreeView("starling-sessions", {
+    treeDataProvider: sessionsProvider,
+  });
+  sessionsProvider.setTreeView(sessionsTree);
+  context.subscriptions.push(sessionsTree, sessionsProvider.startBackgroundMonitoring());
   vscode.window.registerTreeDataProvider("starling-spaces", spacesProvider);
   vscode.window.registerTreeDataProvider("starling-projects", projectsProvider);
   vscode.window.registerTreeDataProvider("starling-models", modelsProvider);
@@ -751,43 +766,58 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
-  // nothing
+  disposeLogging();
 }
 
 async function runCliCommandOutput(title: string, command: () => Promise<string>): Promise<void> {
   try {
     const text = await command();
+    clearProblem("command");
+    logInfo(`${title} completed.`);
+    const outputChannel = getOutputChannel();
     outputChannel.clear();
     outputChannel.appendLine(`[${title}]`);
     outputChannel.appendLine(text.trim());
     outputChannel.show(true);
   } catch (err) {
     if (await maybePromptStarlingInstall(err)) return;
+    const message = `${title} failed: ${errorMessage(err)}`;
+    logError(message, err);
+    reportProblem("command", message);
     vscode.window.showErrorMessage(`${title} failed: ${errorMessage(err)}`);
   }
 }
 
 async function showCommandError(action: string, err: unknown): Promise<void> {
   if (await maybePromptStarlingInstall(err)) return;
+  const message = `${action} failed: ${errorMessage(err)}`;
+  logError(message, err);
+  reportProblem("command", message);
   vscode.window.showErrorMessage(`${action} failed: ${errorMessage(err)}`);
 }
 
 async function checkStarlingCliOnActivation(): Promise<void> {
   try {
     await cli.checkStarlingAvailable();
+    clearProblem("cli");
+    logInfo("Starling CLI is available.");
   } catch (err) {
+    logError("Starling CLI availability check failed.", err);
     await maybePromptStarlingInstall(err);
   }
 }
 
 async function maybePromptStarlingInstall(err: unknown): Promise<boolean> {
   if (!(err instanceof cli.StarlingCliNotFoundError)) return false;
+  const message = `Starling CLI was not found (${err.cliPath}). Install it with npm or set starling.cliPath.`;
+  logError(message, err);
+  reportProblem("cli", message);
   if (starlingInstallPromptVisible) return true;
 
   starlingInstallPromptVisible = true;
   try {
     const selected = await vscode.window.showWarningMessage(
-      `Starling CLI was not found (${err.cliPath}). Install it with npm or set starling.cliPath.`,
+      message,
       "Install in Terminal",
       "Set CLI Path"
     );
@@ -864,7 +894,7 @@ async function startModelSessionInTerminal(model: cli.ModelConfigSummary, catalo
 
   const args = ["run"];
   if (model.scope === "profile") {
-    args.push("--config", shellArg(model.name));
+    args.push("--setting", shellArg(model.name));
   }
   if (catalog) {
     args.push("--catalog", shellArg(catalog));
