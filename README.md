@@ -8,6 +8,18 @@ Starling Agent is a VS Code sidebar for browsing, resuming, and organizing Claud
 
 It works with the Starling CLI and shows your local agent history in four focused views: Catalog, Projects, Models, and Monitor.
 
+Current release: **0.1.0**
+
+- VS Code Marketplace: [`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
+- GitHub Release: [`v0.1.0`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.0)
+- CLI package: [`starling-ai`](https://www.npmjs.com/package/starling-ai)
+
+The GitHub release includes the packaged VSIX:
+
+```text
+starling-ai-0.1.0.vsix
+```
+
 ## Requirements
 
 Install the Starling CLI first:
@@ -31,6 +43,8 @@ npm install -g starling-ai
 ```
 
 You can also use the prompt to open the `starling.cliPath` setting.
+
+Starling CLI 0.1.0 or newer is recommended so the Monitor view can consume the current `starling top --json` protocol.
 
 ## Views
 
@@ -89,6 +103,21 @@ Right-click a model profile to:
 
 Monitor pinned, active, and recent Claude Code and Codex sessions with live status, context, token, CPU, memory, and task details.
 
+The Monitor view is backed by `starling top --json` and refreshes in the background. It groups sessions into:
+
+- Needs attention: sessions waiting for user input or approval.
+- Active sessions: sessions currently running or waiting.
+- Pinned monitor: pinned sessions, sorted by live state.
+- Recent monitor: optional recent unpinned sessions.
+- Static sessions: fallback session list if live monitor data is temporarily unavailable.
+
+Session states are shown with colored VS Code theme icons:
+
+- Running: the agent is actively processing work.
+- Waiting: the agent is waiting for user input or approval.
+- Idle: the agent process exists, but the model is not currently processing.
+- Stopped: no active process is associated with the session.
+
 Right-click a session to:
 
 - Resume the session.
@@ -136,6 +165,8 @@ Common commands:
   "starling.cliPath": "starling",
   "starling.homePath": "",
   "starling.cacheTtlSeconds": 30,
+  "starling.monitorRefreshSeconds": 3,
+  "starling.monitorCacheTtlSeconds": 2,
   "starling.projectSessionLimit": 30,
   "starling.sessionTreeLimit": 50
 }
@@ -152,6 +183,14 @@ Optional Starling data directory. Leave empty to use `~/.starling`. When set, th
 ### `starling.cacheTtlSeconds`
 
 How long CLI query results are cached. Set to `0` to disable cache.
+
+### `starling.monitorRefreshSeconds`
+
+How often the extension refreshes live session status in the background. The default is `3` seconds.
+
+### `starling.monitorCacheTtlSeconds`
+
+How long live monitor snapshots are cached. The extension keeps the last good snapshot when a refresh fails, so transient CLI errors do not blank the Monitor view.
 
 ### `starling.projectSessionLimit`
 
@@ -173,6 +212,16 @@ Set `starling.homePath` to use a different directory.
 
 The extension reads this data through the Starling CLI. It does not upload session contents.
 
+## Logs and Problems
+
+The extension writes diagnostic logs to the VS Code **Output** panel:
+
+```text
+Output -> Starling
+```
+
+CLI failures, monitor refresh failures, and JSON parsing errors are also reported to VS Code **Problems** diagnostics when they affect a view. Successful refreshes clear the related diagnostics.
+
 ## Useful CLI Commands
 
 ```bash
@@ -183,8 +232,17 @@ starling session index rebuild
 starling catalog tree
 starling project ls
 starling model ls
+starling top
+starling top --json
+starling run status
 ```
 
 ## Repository
 
 https://github.com/huang-sh/Starling-ext
+
+The CLI repository is:
+
+```text
+https://github.com/huang-sh/Starling
+```
