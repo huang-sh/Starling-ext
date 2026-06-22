@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import { homedir } from "os";
 import { SessionsProvider } from "./providers/sessions";
 import { SpacesProvider } from "./providers/spaces";
 import { ProjectsProvider } from "./providers/projects";
@@ -18,6 +19,80 @@ import {
 } from "./logging";
 
 let starlingInstallPromptVisible = false;
+
+class StarlingDataWatcher implements vscode.Disposable {
+  private disposables: vscode.Disposable[] = [];
+  private refreshTimer: NodeJS.Timeout | undefined;
+
+  constructor(private readonly onChange: () => void) {
+    this.rebuild();
+  }
+
+  rebuild(): void {
+    this.disposeWatchers();
+    for (const root of starlingDataRoots()) {
+      this.watchRoot(root);
+    }
+  }
+
+  dispose(): void {
+    this.disposeWatchers();
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = undefined;
+    }
+  }
+
+  private watchRoot(root: string): void {
+    const patterns = [
+      "store.json",
+      "runs.json",
+      "osc-state.json",
+      "session-index.json",
+      "project-session-index.json",
+      "settings/**/*",
+      "run-hooks/*.jsonl",
+    ];
+    for (const pattern of patterns) {
+      const watcher = vscode.workspace.createFileSystemWatcher(
+        new vscode.RelativePattern(root, pattern),
+        false,
+        false,
+        false
+      );
+      watcher.onDidCreate(() => this.scheduleRefresh());
+      watcher.onDidChange(() => this.scheduleRefresh());
+      watcher.onDidDelete(() => this.scheduleRefresh());
+      this.disposables.push(watcher);
+    }
+  }
+
+  private scheduleRefresh(): void {
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer);
+    }
+    this.refreshTimer = setTimeout(() => {
+      this.refreshTimer = undefined;
+      this.onChange();
+    }, 500);
+  }
+
+  private disposeWatchers(): void {
+    for (const disposable of this.disposables) {
+      disposable.dispose();
+    }
+    this.disposables = [];
+  }
+}
+
+function starlingDataRoots(): string[] {
+  const roots = [
+    cli.starlingHomeRoot(),
+    path.join(homedir(), ".starling"),
+    path.join(homedir(), ".config", "starling"),
+  ];
+  return [...new Set(roots.map((root) => path.resolve(root)))];
+}
 
 interface QuickPickItem<T> extends vscode.QuickPickItem {
   value: T;
@@ -56,6 +131,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("starling.refresh", refreshHandler)
   );
 
+  const dataWatcher = new StarlingDataWatcher(refreshAllViews);
+  context.subscriptions.push(dataWatcher);
+
   context.subscriptions.push(
     vscode.workspace.onDidSaveTextDocument((document) => {
       if (isStarlingModelProfilePath(document.uri.fsPath)) {
@@ -68,6 +146,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("starling")) {
         refreshAllViews();
+        dataWatcher.rebuild();
         void checkStarlingCliOnActivation();
       }
     })
@@ -875,13 +954,51 @@ async function resumeSessionInTerminal(sessionId: string): Promise<void> {
   const terminal = vscode.window.createTerminal({
     name: `starling: ${normalizedSessionLabel(sessionId)}`,
     cwd: meta.project_path || undefined,
+    env: terminalStarlingEnv(),
   });
   const agent = meta.provider === "codex" ? "codex" : "claude";
-  const command = agent === "codex"
-    ? `codex resume ${meta.session_id}`
-    : `claude --resume ${meta.session_id}`;
-  terminal.sendText(command);
+  terminal.sendText(starlingResumeCommand(meta, agent));
   terminal.show();
+}
+
+function starlingResumeCommand(meta: cli.SessionMeta, agent: "claude" | "codex"): string {
+  const args = ["run"];
+  const catalog = firstSessionCatalogName(meta);
+  if (catalog) {
+    args.push("--catalog", shellArg(catalog));
+  }
+  args.push(agent);
+  if (agent === "codex") {
+    args.push("resume", shellArg(meta.session_id));
+  } else {
+    args.push("--resume", shellArg(meta.session_id));
+  }
+  return `${starlingCliCommand()} ${args.join(" ")}`;
+}
+
+function starlingCliCommand(): string {
+  const configured = process.env.STARLING_BIN
+    || vscode.workspace.getConfiguration("starling").get<string>("cliPath", "starling");
+  return shellArg(configured || "starling");
+}
+
+function terminalStarlingEnv(): Record<string, string> | undefined {
+  const home = cli.starlingHomePath();
+  return home ? { STARLING_HOME: home } : undefined;
+}
+
+function firstSessionCatalogName(meta: cli.SessionMeta): string | undefined {
+  const catalogs = Array.isArray(meta.catalogs) ? meta.catalogs : [];
+  const first = catalogs[0] as unknown;
+  if (!first) return undefined;
+  if (typeof first === "string") {
+    return first.replace(/\s+\([^)]*\)\s*$/, "").trim() || undefined;
+  }
+  if (typeof first === "object" && first !== null) {
+    const name = (first as { name?: unknown }).name;
+    return typeof name === "string" && name.trim() ? name.trim() : undefined;
+  }
+  return undefined;
 }
 
 async function startModelSessionInTerminal(model: cli.ModelConfigSummary, catalog?: string): Promise<void> {
@@ -1288,11 +1405,11 @@ function modelProfileTemplate(agent: "claude" | "codex"): Record<string, unknown
       enableAllProjectMcpServers: true,
       permissions: {
         allow: [
-          "Edit:*",
-          "Write:*",
-          "MultiEdit:*",
-          "NotebookEdit:*",
-          "Bash:*",
+          "Edit",
+          "Write",
+          "MultiEdit",
+          "NotebookEdit",
+          "Bash",
         ],
         defaultMode: "plan",
       },

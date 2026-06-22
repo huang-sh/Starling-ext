@@ -8,16 +8,16 @@ Starling Agent is a VS Code sidebar for browsing, resuming, and organizing Claud
 
 It works with the Starling CLI and shows your local agent history in four focused views: Catalog, Projects, Models, and Monitor.
 
-Current release: **0.1.0**
+Current release: **0.1.1**
 
 - VS Code Marketplace: [`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
-- GitHub Release: [`v0.1.0`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.0)
+- GitHub Release: [`v0.1.1`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.1)
 - CLI package: [`starling-ai`](https://www.npmjs.com/package/starling-ai)
 
 The GitHub release includes the packaged VSIX:
 
 ```text
-starling-ai-0.1.0.vsix
+starling-ai-0.1.1.vsix
 ```
 
 ## Requirements
@@ -115,7 +115,10 @@ Session states are shown with colored VS Code theme icons:
 
 - Running: the agent is actively processing work.
 - Waiting: the agent is waiting for user input or approval.
+- Aborted: the current turn was interrupted or cancelled.
 - Idle: the agent process exists, but the model is not currently processing.
+- Running?: the last running signal is stale and may need a refresh.
+- Failure: the last runtime signal reported a failure.
 - Stopped: no active process is associated with the session.
 
 Right-click a session to:

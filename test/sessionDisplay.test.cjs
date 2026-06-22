@@ -3,9 +3,11 @@ const test = require("node:test");
 
 const display = require("../out/sessionDisplay.js");
 
-test("formats monitor status glyphs with the canonical four statuses", () => {
+test("formats monitor status glyphs with the canonical statuses", () => {
   assert.equal(display.formatStatusGlyph("waiting"), "⏸ Waiting");
   assert.equal(display.formatStatusGlyph("running"), "● Running");
+  assert.equal(display.formatStatusGlyph("stale_running"), "◐ Running?");
+  assert.equal(display.formatStatusGlyph("aborted"), "× Aborted");
   assert.equal(display.formatStatusGlyph("idle"), "○ Idle");
   assert.equal(display.formatStatusGlyph("stopped"), "· Stopped");
   assert.equal(display.formatStatusGlyph("unknown"), "? Unknown");

@@ -132,6 +132,9 @@ export class SessionDetailPanel {
     .live-table td:first-child { color: var(--vscode-descriptionForeground); white-space: nowrap; font-weight: 600; width: 110px; }
     .status-waiting { color: var(--vscode-terminal-ansiYellow); font-weight: 600; }
     .status-running { color: var(--vscode-terminal-ansiGreen); font-weight: 600; }
+    .status-stale_running { color: var(--vscode-terminal-ansiYellow); font-weight: 600; }
+    .status-aborted { color: var(--vscode-terminal-ansiYellow); font-weight: 600; }
+    .status-failure { color: var(--vscode-terminal-ansiRed); font-weight: 600; }
     .status-idle { color: var(--vscode-descriptionForeground); }
     .status-stopped { color: var(--vscode-descriptionForeground); }
     .status-unknown { color: var(--vscode-descriptionForeground); }

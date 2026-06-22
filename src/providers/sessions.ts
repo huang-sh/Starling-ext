@@ -124,8 +124,14 @@ function iconForStatus(status: cli.LiveStatus): vscode.ThemeIcon {
       return new vscode.ThemeIcon("warning", statusColor(status));
     case "running":
       return new vscode.ThemeIcon("sync~spin", statusColor(status));
+    case "stale_running":
+      return new vscode.ThemeIcon("debug-pause", statusColor(status));
+    case "aborted":
+      return new vscode.ThemeIcon("debug-stop", statusColor(status));
     case "idle":
       return new vscode.ThemeIcon("circle-large-outline", statusColor(status));
+    case "failure":
+      return new vscode.ThemeIcon("error", statusColor(status));
     case "stopped":
       return new vscode.ThemeIcon("debug-stop", statusColor(status));
     default:
@@ -139,8 +145,14 @@ function statusColor(status: cli.LiveStatus): vscode.ThemeColor {
       return new vscode.ThemeColor("charts.yellow");
     case "running":
       return new vscode.ThemeColor("charts.green");
+    case "stale_running":
+      return new vscode.ThemeColor("charts.orange");
+    case "aborted":
+      return new vscode.ThemeColor("charts.orange");
     case "idle":
       return new vscode.ThemeColor("charts.blue");
+    case "failure":
+      return new vscode.ThemeColor("charts.red");
     case "stopped":
       return new vscode.ThemeColor("descriptionForeground");
     default:
@@ -154,8 +166,14 @@ function statusText(status: cli.LiveStatus): string {
       return "Waiting";
     case "running":
       return "Running";
+    case "stale_running":
+      return "Running?";
+    case "aborted":
+      return "Aborted";
     case "idle":
       return "Idle";
+    case "failure":
+      return "Failure";
     case "stopped":
       return "Stopped";
     default:
@@ -593,10 +611,13 @@ function isActiveLiveStatus(status: cli.LiveStatus): boolean {
 function sortMonitorRows(rows: cli.MonitorRow[]): cli.MonitorRow[] {
   const rank: Record<cli.LiveStatus, number> = {
     running: 0,
-    waiting: 1,
-    idle: 2,
-    stopped: 3,
-    unknown: 4,
+    stale_running: 1,
+    waiting: 2,
+    failure: 3,
+    aborted: 4,
+    idle: 5,
+    stopped: 6,
+    unknown: 7,
   };
   return [...rows].sort((a, b) => {
     const statusDiff = (rank[a.status] ?? 9) - (rank[b.status] ?? 9);
@@ -641,11 +662,17 @@ function summarizeMonitorRows(rows: cli.MonitorRow[]): { attention: number; acti
   }
   const waiting = counts.get("waiting") ?? 0;
   const running = counts.get("running") ?? 0;
+  const stale = counts.get("stale_running") ?? 0;
+  const aborted = counts.get("aborted") ?? 0;
   const idle = counts.get("idle") ?? 0;
+  const failure = counts.get("failure") ?? 0;
   const active = waiting + running;
   const parts = [
     waiting ? `${waiting} waiting` : "",
     running ? `${running} running` : "",
+    stale ? `${stale} stale` : "",
+    failure ? `${failure} failure` : "",
+    aborted ? `${aborted} aborted` : "",
     idle ? `${idle} idle` : "",
   ].filter(Boolean);
   return {

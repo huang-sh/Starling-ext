@@ -39,6 +39,9 @@ const LIVE_GLYPH: Record<LiveStatus, string> = {
   waiting: "⏸",
   idle: "○",
   running: "●",
+  stale_running: "◐",
+  aborted: "×",
+  failure: "×",
   stopped: "·",
   unknown: "?",
 };
@@ -47,6 +50,9 @@ const LIVE_LABEL: Record<LiveStatus, string> = {
   waiting: "Waiting",
   idle: "Idle",
   running: "Running",
+  stale_running: "Running?",
+  aborted: "Aborted",
+  failure: "Failure",
   stopped: "Stopped",
   unknown: "Unknown",
 };
