@@ -43,6 +43,22 @@ export interface SessionMeta {
   first_prompt: string | null;
   token_usage?: TokenUsage;
   catalogs?: Array<{ id: string; name: string }>;
+  latest_run?: RunRecord;
+}
+
+export interface RunRecord {
+  run_id: string;
+  session_id?: string;
+  provider: string;
+  project_path?: string;
+  catalog_id?: string;
+  setting?: string;
+  pid?: number;
+  status: string;
+  exit_code?: number;
+  started_at: string;
+  ended_at?: string;
+  source: string;
 }
 
 export interface Note {

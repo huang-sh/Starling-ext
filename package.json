@@ -2,7 +2,7 @@
   "name": "starling-ai",
   "displayName": "Starling Agent",
   "description": "Agent session manager — discover, pin, and organize AI coding sessions",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "huangsh",
   "icon": "icons/starling.png",
   "license": "MIT",
@@ -541,7 +541,7 @@
         },
         "starling.monitorRefreshSeconds": {
           "type": "number",
-          "default": 3,
+          "default": 5,
           "description": "How often the extension refreshes live session status in the background. Set to 0 to use the default.",
           "minimum": 0
         },

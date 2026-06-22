@@ -542,8 +542,6 @@ export class SessionsProvider implements vscode.TreeDataProvider<TreeNode> {
       if (
         row.status !== other.status ||
         row.pid !== other.pid ||
-        row.cpu_pct !== other.cpu_pct ||
-        row.mem_kb !== other.mem_kb ||
         row.ctx_pct !== other.ctx_pct ||
         row.last_tool !== other.last_tool ||
         row.tokens_in !== other.tokens_in ||
@@ -551,10 +549,7 @@ export class SessionsProvider implements vscode.TreeDataProvider<TreeNode> {
         row.tokens_cache !== other.tokens_cache ||
         row.current_task !== other.current_task ||
         row.started_at_ms !== other.started_at_ms ||
-        row.compaction_count !== other.compaction_count ||
-        row.pending_since_ms !== other.pending_since_ms ||
-        row.thinking_since_ms !== other.thinking_since_ms ||
-        row.last_activity_ms !== other.last_activity_ms
+        row.compaction_count !== other.compaction_count
       ) {
         return false;
       }
@@ -649,7 +644,7 @@ function getSessionsLimit(): number {
 }
 
 function getMonitorRefreshMs(): number {
-  const configured = vscode.workspace.getConfiguration("starling").get<number>("monitorRefreshSeconds", 3);
+  const configured = vscode.workspace.getConfiguration("starling").get<number>("monitorRefreshSeconds", 5);
   const normalized = Number(configured);
   if (!Number.isFinite(normalized) || normalized <= 0) return 3000;
   return Math.max(1000, Math.floor(normalized * 1000));

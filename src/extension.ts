@@ -47,11 +47,9 @@ class StarlingDataWatcher implements vscode.Disposable {
     const patterns = [
       "store.json",
       "runs.json",
-      "osc-state.json",
       "session-index.json",
       "project-session-index.json",
       "settings/**/*",
-      "run-hooks/*.jsonl",
     ];
     for (const pattern of patterns) {
       const watcher = vscode.workspace.createFileSystemWatcher(
@@ -957,12 +955,16 @@ async function resumeSessionInTerminal(sessionId: string): Promise<void> {
     env: terminalStarlingEnv(),
   });
   const agent = meta.provider === "codex" ? "codex" : "claude";
-  terminal.sendText(starlingResumeCommand(meta, agent));
+  const setting = await resolveResumeSetting(meta, agent);
+  terminal.sendText(starlingResumeCommand(meta, agent, setting));
   terminal.show();
 }
 
-function starlingResumeCommand(meta: cli.SessionMeta, agent: "claude" | "codex"): string {
+function starlingResumeCommand(meta: cli.SessionMeta, agent: "claude" | "codex", setting?: string): string {
   const args = ["run"];
+  if (setting) {
+    args.push("--setting", shellArg(setting));
+  }
   const catalog = firstSessionCatalogName(meta);
   if (catalog) {
     args.push("--catalog", shellArg(catalog));
@@ -974,6 +976,35 @@ function starlingResumeCommand(meta: cli.SessionMeta, agent: "claude" | "codex")
     args.push("--resume", shellArg(meta.session_id));
   }
   return `${starlingCliCommand()} ${args.join(" ")}`;
+}
+
+async function resolveResumeSetting(
+  meta: cli.SessionMeta,
+  agent: "claude" | "codex"
+): Promise<string | undefined> {
+  const recorded = latestRunSetting(meta);
+  if (recorded) return recorded;
+
+  const model = typeof meta.model === "string" ? meta.model.trim() : "";
+  if (!model) return undefined;
+
+  try {
+    const profiles = await cli.listModels(agent);
+    const exact = profiles.find((profile) =>
+      profile.scope === "profile"
+      && profile.exists
+      && profile.agent === agent
+      && profile.name === model
+    );
+    return exact?.name;
+  } catch {
+    return undefined;
+  }
+}
+
+function latestRunSetting(meta: cli.SessionMeta): string | undefined {
+  const setting = meta.latest_run?.setting;
+  return typeof setting === "string" && setting.trim() ? setting.trim() : undefined;
 }
 
 function starlingCliCommand(): string {
