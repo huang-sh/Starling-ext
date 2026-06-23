@@ -12,7 +12,6 @@ import {
   shortSessionId,
 } from "../sessionDisplay";
 import { clearProblem, logError, reportProblem } from "../logging";
-import { normalizePathForTree } from "./projects";
 
 // --- Tree item types ---
 
@@ -63,21 +62,24 @@ class MonitorSessionNode extends vscode.TreeItem {
 
   constructor(public readonly monitor: cli.MonitorRow) {
     const sessionId = monitor.canonical_session_id || monitor.session_id;
-    const title = monitor.title || monitor.current_task || sessionId;
-    const compactTitle = title.length > 58 ? `${title.slice(0, 55)}...` : title;
-    super(`${shortSessionId(sessionId)}  ${compactTitle}`, vscode.TreeItemCollapsibleState.None);
+    const title = normalizeDisplayTitle(monitor.title, sessionId);
+    const label = title ? truncate(title, 58) : shortSessionId(sessionId);
+    super(label, vscode.TreeItemCollapsibleState.None);
 
     this.meta = {
       session_id: sessionId,
       project_path: monitor.project_path || null,
     };
 
-    const project = projectNameForMonitor(monitor.project_path);
     const ctx = formatCtxPct(monitor.ctx_pct);
     const tokens = `${formatCompactTokens(monitor.tokens_in)}/${formatCompactTokens(monitor.tokens_out)}`;
-    const task = monitor.current_task || (monitor.last_tool ? `last ${monitor.last_tool}` : "");
-    const taskSuffix = task ? `  ·  ${truncate(task, 36)}` : "";
-    this.description = `${statusText(monitor.status)}  ·  ${monitor.provider}  ·  ${monitor.model || "-"}  ·  ${project}  ·  ctx ${ctx}  ·  tok ${tokens}${taskSuffix}`;
+    const parts = [
+      monitor.model || "",
+      ctx !== "-" ? `ctx ${ctx}` : "",
+      tokens !== "0/0" ? `tok ${tokens}` : "",
+      monitor.current_task ? truncate(monitor.current_task, 42) : "",
+    ].filter(Boolean);
+    this.description = parts.join("  ·  ");
     this.tooltip = buildMonitorTooltip(monitor);
     this.iconPath = iconForStatus(monitor.status);
     this.contextValue = monitor.pinned ? "session-pinned" : "session-unpinned";
@@ -98,20 +100,15 @@ class SessionNode extends vscode.TreeItem {
           ? title.slice(0, 37) + "…"
           : title
         : "";
-    const label = titleSummary
-      ? `${shortId} ${titleSummary}`
-      : shortId;
+    const label = titleSummary || shortId;
 
     super(
       label,
       vscode.TreeItemCollapsibleState.None
     );
-    const normalizedProject = normalizePathForTree(meta.project_path || "");
-    const project = normalizedProject ? normalizedProject.split("/").slice(-2).join("/") : "";
     const pinnedSuffix = isPinned ? " (pinned)" : "";
 
-    const statusPrefix = monitor ? `${statusText(monitor.status)}  ·  ` : "";
-    this.description = `${statusPrefix}${meta.model || ""}  ${project}${pinnedSuffix}`.trim();
+    this.description = `${meta.model || ""}${pinnedSuffix}`.trim();
 
     this.tooltip = buildSessionTooltip(meta, isPinned, monitor);
     this.iconPath = monitor ? iconForStatus(monitor.status) : new vscode.ThemeIcon("terminal");
@@ -161,25 +158,11 @@ function statusColor(status: cli.LiveStatus): vscode.ThemeColor {
   }
 }
 
-function statusText(status: cli.LiveStatus): string {
-  switch (status) {
-    case "waiting":
-      return "Waiting";
-    case "running":
-      return "Running";
-    case "stale_running":
-      return "Running?";
-    case "aborted":
-      return "Aborted";
-    case "idle":
-      return "Idle";
-    case "failure":
-      return "Failure";
-    case "stopped":
-      return "Stopped";
-    default:
-      return "Unknown";
-  }
+function normalizeDisplayTitle(title: string | null | undefined, sessionId: string): string {
+  const normalized = (title || "").trim();
+  if (!normalized) return "";
+  if (normalized === sessionId || normalized === shortSessionId(sessionId)) return "";
+  return normalized;
 }
 
 function iconForMonitorGroup(kind: MonitorGroupKind): vscode.ThemeIcon {
@@ -620,12 +603,6 @@ function sortMonitorRows(rows: cli.MonitorRow[]): cli.MonitorRow[] {
     if (statusDiff !== 0) return statusDiff;
     return (b.last_activity_ms || 0) - (a.last_activity_ms || 0);
   });
-}
-
-function projectNameForMonitor(projectPath: string): string {
-  const normalized = normalizePathForTree(projectPath || "");
-  if (!normalized) return "-";
-  return normalized.split("/").filter(Boolean).slice(-1)[0] || normalized;
 }
 
 function truncate(value: string, max: number): string {

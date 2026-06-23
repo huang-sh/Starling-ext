@@ -91,6 +91,8 @@ export interface Space {
   tags: string[];
   created_at: string;
   updated_at: string;
+  pin_count?: number;
+  session_count?: number;
 }
 
 export interface SpaceWithPins extends Space {
@@ -837,11 +839,24 @@ export async function catalogShowText(name: string): Promise<string> {
 }
 
 export async function getSpace(name: string): Promise<SpaceWithPins> {
-  const stdout = await execStarlingRaw(["catalog", "show", name], {
-    maxBuffer: DEFAULT_MAX_BUFFER,
-    timeout: DEFAULT_TEXT_TIMEOUT,
+  const args = ["catalog", "show", name, "--json"];
+  return getCachedResult<SpaceWithPins>(`spaceGet:${cacheKeyForCommand(args)}`, async () => {
+    try {
+      return await execStarlingJson<SpaceWithPins>(args, {
+        maxBuffer: DEFAULT_MAX_BUFFER,
+        timeout: DEFAULT_TEXT_TIMEOUT,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/unexpected argument '--json'|Usage: starling catalog show/i.test(message)) {
+        throw err;
+      }
+      const catalogs = await listSpaces(true) as SpaceWithPins[];
+      const found = catalogs.find((catalog) => catalog.id === name || catalog.name === name);
+      if (!found) throw err;
+      return found;
+    }
   });
-  return JSON.parse(stdout.replaceAll("\n", "")) as SpaceWithPins;
 }
 
 export async function createCatalog(name: string, opts: { description?: string; tags?: string; parent?: string } = {}): Promise<string> {

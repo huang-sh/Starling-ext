@@ -1,13 +1,13 @@
 import * as vscode from "vscode";
 import * as cli from "../cli";
-import { formatTokenUsage, shortSessionId } from "../sessionDisplay";
+import { shortSessionId } from "../sessionDisplay";
 import { mdTooltip } from "../tooltip";
 
 // --- Tree item types ---
 
 class SpaceNode extends vscode.TreeItem {
-  constructor(public readonly space: cli.SpaceWithPins, public readonly childSpaces: cli.SpaceWithPins[]) {
-    const spacePinCount = space.pins?.length ?? 0;
+  constructor(public readonly space: cli.Space, public readonly childSpaces: cli.Space[]) {
+    const spacePinCount = space.session_count ?? space.pin_count ?? 0;
     const childCount = childSpaces.length;
     const state =
       spacePinCount > 0 || childCount > 0
@@ -35,7 +35,6 @@ class SpaceNode extends vscode.TreeItem {
 class PinNode extends vscode.TreeItem {
   constructor(
     public readonly bookmark: cli.Bookmark,
-    public readonly session?: cli.SessionMeta,
     public readonly catalog?: cli.SpaceWithPins
   ) {
     const hasTitle = Boolean(bookmark.title && bookmark.title.trim());
@@ -48,13 +47,12 @@ class PinNode extends vscode.TreeItem {
     this.tooltip = mdTooltip([
       ["Pin", `\`${bookmark.id}\``],
       ["Session", `\`${bookmark.session_id}\``],
-      ["Agent", session?.provider || bookmark.provider || "-"],
-      ["Model", session?.model || "-"],
-      ["Project", session?.project_path || bookmark.project_path || "-"],
-      ["Modified", session?.modified_at || "-"],
-      ["Tokens", formatTokenUsage(session?.token_usage)],
+      ["Agent", bookmark.provider || "-"],
+      ["Project", bookmark.project_path || "-"],
+      ["First prompt", bookmark.first_prompt || "-"],
       ["Title", bookmark.title || "-"],
       ["Tags", bookmark.tags.join(", ") || "-"],
+      ["Updated", bookmark.updated_at],
       ["Created", bookmark.created_at],
     ]);
     this.iconPath = new vscode.ThemeIcon("bookmark");
@@ -84,12 +82,8 @@ function errorItem(label: string, err: unknown): vscode.TreeItem {
 export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
   private _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._onDidChange.event;
-  private readonly sessionLookup = new Map<string, cli.SessionMeta>();
-  private readonly sessionLoads = new Set<string>();
 
   refresh(): void {
-    this.sessionLookup.clear();
-    this.sessionLoads.clear();
     this._onDidChange.fire();
   }
 
@@ -99,7 +93,7 @@ export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
 
   async getChildren(element?: TreeNode): Promise<TreeNode[]> {
     try {
-      const spaces = await cli.listSpaces(true) as cli.SpaceWithPins[];
+      const spaces = await cli.listSpaces(false) as cli.Space[];
       if (!element) {
         if (spaces.length === 0) {
           return [new vscode.TreeItem("No catalogs", vscode.TreeItemCollapsibleState.None)];
@@ -111,45 +105,20 @@ export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
         const children = childCatalogs(spaces, element.space.id).map((space) =>
           new SpaceNode(space, childCatalogs(spaces, space.id))
         );
-        const pins = element.space.pins ?? [];
+        const details = await cli.getSpace(element.space.id);
+        const pins = details.pins ?? [];
         if (children.length === 0 && pins.length === 0) {
           return [new vscode.TreeItem("(empty)", vscode.TreeItemCollapsibleState.None)];
         }
-        await this.hydratePinSessions(pins);
-        return [...children, ...pins.map((p) => new PinNode(p, this.sessionLookup.get(p.session_id), element.space))];
+        return [...children, ...pins.map((p) => new PinNode(p, details))];
       }
     } catch (err) {
       return [errorItem("Error loading catalogs", err)];
     }
     return [];
   }
-
-  private async hydratePinSessions(pins: cli.Bookmark[]): Promise<void> {
-    const pending = pins
-      .map((pin) => pin.session_id)
-      .filter((sessionId) => sessionId && !this.sessionLookup.has(sessionId) && !this.sessionLoads.has(sessionId));
-    if (pending.length === 0) return;
-
-    for (const sessionId of pending) {
-      this.sessionLoads.add(sessionId);
-    }
-
-    try {
-      const sessions = await cli.getSessions(pending);
-      for (const sessionId of pending) {
-        const session = sessions.get(sessionId);
-        if (session) {
-          this.sessionLookup.set(sessionId, session);
-        }
-      }
-    } finally {
-      for (const sessionId of pending) {
-        this.sessionLoads.delete(sessionId);
-      }
-    }
-  }
 }
 
-function childCatalogs(spaces: cli.SpaceWithPins[], parentId: string): cli.SpaceWithPins[] {
+function childCatalogs(spaces: cli.Space[], parentId: string): cli.Space[] {
   return spaces.filter((space) => space.parent_id === parentId);
 }
