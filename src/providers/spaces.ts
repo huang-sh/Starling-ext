@@ -33,7 +33,11 @@ class SpaceNode extends vscode.TreeItem {
 }
 
 class PinNode extends vscode.TreeItem {
-  constructor(public readonly bookmark: cli.Bookmark, public readonly session?: cli.SessionMeta) {
+  constructor(
+    public readonly bookmark: cli.Bookmark,
+    public readonly session?: cli.SessionMeta,
+    public readonly catalog?: cli.SpaceWithPins
+  ) {
     const hasTitle = Boolean(bookmark.title && bookmark.title.trim());
     super(
       truncate(hasTitle ? bookmark.title : shortSessionId(bookmark.session_id) + "…"),
@@ -112,7 +116,7 @@ export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
           return [new vscode.TreeItem("(empty)", vscode.TreeItemCollapsibleState.None)];
         }
         this.hydratePinSessions(pins);
-        return [...children, ...pins.map((p) => new PinNode(p, this.sessionLookup.get(p.session_id)))];
+        return [...children, ...pins.map((p) => new PinNode(p, this.sessionLookup.get(p.session_id), element.space))];
       }
     } catch (err) {
       return [errorItem("Error loading catalogs", err)];

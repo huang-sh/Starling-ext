@@ -81,8 +81,9 @@ class ProjectSessionNode extends vscode.TreeItem {
   constructor(public readonly meta: cli.SessionMeta) {
     const shortSession = shortSessionId(meta.session_id);
     const model = meta.model || "-";
+    const title = meta.custom_title ? `  ${truncate(meta.custom_title, 36)}` : "";
     super(
-      truncate(`${shortSession}  ${meta.provider}  ${model}`, PROJECT_SESSION_LABEL_MAX),
+      truncate(`${shortSession}  ${meta.provider}  ${model}${title}`, PROJECT_SESSION_LABEL_MAX),
       vscode.TreeItemCollapsibleState.None
     );
     this.description = meta.project_path ? truncate(meta.project_path, PROJECT_SESSION_DESC_MAX) : "";
@@ -93,6 +94,7 @@ class ProjectSessionNode extends vscode.TreeItem {
       ["Modified", meta.modified_at],
       ["Project", meta.project_path || "-"],
       ["Tokens", formatTokenUsage(meta.token_usage)],
+      ["Title", meta.custom_title ?? "-"],
       ["Last prompt", meta.first_prompt ?? "-"],
     ]);
     this.contextValue = "project-session";

@@ -91,14 +91,15 @@ class SessionNode extends vscode.TreeItem {
     monitor?: cli.MonitorRow
   ) {
     const shortId = shortSessionId(meta.session_id);
-    const promptSummary =
-      meta.first_prompt
-        ? meta.first_prompt.length > 40
-          ? meta.first_prompt.slice(0, 37) + "…"
-          : meta.first_prompt
+    const title = meta.custom_title || meta.first_prompt || "";
+    const titleSummary =
+      title
+        ? title.length > 40
+          ? title.slice(0, 37) + "…"
+          : title
         : "";
-    const label = promptSummary
-      ? `${shortId} ${promptSummary}`
+    const label = titleSummary
+      ? `${shortId} ${titleSummary}`
       : shortId;
 
     super(

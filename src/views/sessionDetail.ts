@@ -75,6 +75,7 @@ export class SessionDetailPanel {
       ["Session ID", shortSessionId(meta.session_id)],
       ["Agent", meta.provider],
       ["Model", meta.model || "-"],
+      ["Title", meta.custom_title || "-"],
       ["Project", meta.project_path || "-"],
       ["Catalogs", formatCatalogs(meta.catalogs)],
       ["Tokens", formatTokenUsage(meta.token_usage)],

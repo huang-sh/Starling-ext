@@ -41,6 +41,7 @@ export interface SessionMeta {
   created_at: string;
   modified_at: string;
   first_prompt: string | null;
+  custom_title?: string | null;
   token_usage?: TokenUsage;
   catalogs?: Array<{ id: string; name: string }>;
   latest_run?: RunRecord;
@@ -736,6 +737,11 @@ async function resolveSessionsLegacy(sessionIds: string[]): Promise<Map<string, 
 
 export async function getSessionText(id: string): Promise<string> {
   return execStarlingRaw(["session", "show", id]);
+}
+
+export async function updateSessionTitle(sessionId: string, title: string): Promise<string> {
+  clearCliCache();
+  return execStarlingRaw(["session", "meta", sessionId, "--title", title], { timeout: DEFAULT_TEXT_TIMEOUT });
 }
 
 export async function resumeSession(id: string): Promise<string> {

@@ -256,6 +256,48 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand("starling.editSessionTitle", async (node: unknown) => {
+      const sessionId = await pickSessionId(node);
+      if (!sessionId) return;
+
+      const currentTitle = await resolveSessionTitleForEdit(node, sessionId);
+      const nextTitle = await vscode.window.showInputBox({
+        title: `Edit session title: ${shortSessionId(sessionId)}`,
+        value: currentTitle,
+        prompt: "Leave empty to clear the Starling title.",
+      });
+      if (nextTitle === undefined) return;
+
+      try {
+        await cli.updateSessionTitle(sessionId, nextTitle.trim());
+        vscode.window.showInformationMessage(`Updated title for ${shortSessionId(sessionId)}…`);
+        refreshAllViews();
+      } catch (err) {
+        await showCommandError("Edit session title", err);
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("starling.forkSession", async (node: unknown) => {
+      const sessionId = await pickSessionId(node);
+      if (!sessionId) return;
+
+      const prompt = await vscode.window.showInputBox({
+        title: `Fork session: ${shortSessionId(sessionId)}`,
+        placeHolder: "Optional first prompt for the forked session",
+      });
+      if (prompt === undefined) return;
+
+      try {
+        await forkSessionInTerminal(sessionId, node, normalizeOptionalInput(prompt));
+      } catch (err) {
+        await showCommandError("Fork session", err);
+      }
+    })
+  );
+
   // Command-line parity: session
   context.subscriptions.push(
     vscode.commands.registerCommand("starling.sessionList", async () => {
@@ -960,6 +1002,31 @@ async function resumeSessionInTerminal(sessionId: string): Promise<void> {
   terminal.show();
 }
 
+async function forkSessionInTerminal(
+  sessionId: string,
+  node: unknown,
+  prompt?: string
+): Promise<void> {
+  const resolved = await resolveSessionForResume(sessionId);
+  if (!resolved) {
+    throw new Error(
+      `Session not found: ${shortSessionId(sessionId)}… (try refreshing the catalog and retrying)`
+    );
+  }
+
+  const meta = resolved;
+  const agent = meta.provider === "codex" ? "codex" : "claude";
+  const setting = await resolveResumeSetting(meta, agent);
+  const catalog = extractCatalogName(node) || firstSessionCatalogName(meta);
+  const terminal = vscode.window.createTerminal({
+    name: `starling fork: ${normalizedSessionLabel(sessionId)}`,
+    cwd: meta.project_path || undefined,
+    env: terminalStarlingEnv(),
+  });
+  terminal.sendText(starlingForkCommand(meta, agent, setting, catalog, prompt));
+  terminal.show();
+}
+
 function starlingResumeCommand(meta: cli.SessionMeta, agent: "claude" | "codex", setting?: string): string {
   const args = ["run"];
   if (setting) {
@@ -974,6 +1041,35 @@ function starlingResumeCommand(meta: cli.SessionMeta, agent: "claude" | "codex",
     args.push("resume", shellArg(meta.session_id));
   } else {
     args.push("--resume", shellArg(meta.session_id));
+  }
+  return `${starlingCliCommand()} ${args.join(" ")}`;
+}
+
+function starlingForkCommand(
+  meta: cli.SessionMeta,
+  agent: "claude" | "codex",
+  setting?: string,
+  catalog?: string,
+  prompt?: string
+): string {
+  const args = ["run"];
+  if (setting) {
+    args.push("--setting", shellArg(setting));
+  }
+  if (catalog) {
+    args.push("--catalog", shellArg(catalog));
+  }
+  args.push(agent);
+  if (agent === "codex") {
+    args.push("fork", shellArg(meta.session_id));
+    if (prompt) {
+      args.push(shellArg(prompt));
+    }
+  } else {
+    args.push("--resume", shellArg(meta.session_id), "--fork-session");
+    if (prompt) {
+      args.push(shellArg(prompt));
+    }
   }
   return `${starlingCliCommand()} ${args.join(" ")}`;
 }
@@ -1191,6 +1287,18 @@ async function pickSessionId(node: unknown): Promise<string | undefined> {
 
   const selected = await pickSession();
   return selected?.session_id;
+}
+
+async function resolveSessionTitleForEdit(node: unknown, sessionId: string): Promise<string> {
+  const direct = extractSessionTitle(node);
+  if (direct !== undefined) return direct;
+
+  try {
+    const session = await cli.getSession(sessionId);
+    return session.custom_title || "";
+  } catch {
+    return "";
+  }
 }
 
 async function pickSpace(): Promise<cli.Space | undefined> {
@@ -1502,10 +1610,20 @@ interface HasSessionMeta {
   meta?: {
     session_id: string;
     project_path?: string | null;
+    custom_title?: string | null;
+    first_prompt?: string | null;
   };
   bookmark?: {
     session_id: string;
     project_path?: string | null;
+    title?: string | null;
+  };
+  catalog?: {
+    name?: string | null;
+  };
+  monitor?: {
+    title?: string | null;
+    current_task?: string | null;
   };
   project?: { project_path: string };
   space?: cli.Space;
@@ -1518,6 +1636,29 @@ function extractSessionId(node: unknown): string | undefined {
   if (obj.meta?.session_id) return obj.meta.session_id;
   if (obj.bookmark?.session_id) return obj.bookmark.session_id;
   return undefined;
+}
+
+function extractSessionTitle(node: unknown): string | undefined {
+  if (!node) return undefined;
+  const obj = node as HasSessionMeta;
+  const candidates = [
+    obj.meta?.custom_title,
+    obj.bookmark?.title,
+    obj.monitor?.title,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  return undefined;
+}
+
+function extractCatalogName(node: unknown): string | undefined {
+  if (!node) return undefined;
+  const obj = node as HasSessionMeta;
+  const name = obj.catalog?.name;
+  return typeof name === "string" && name.trim() ? name.trim() : undefined;
 }
 
 function extractProjectPath(node: unknown): string | undefined {
