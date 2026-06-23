@@ -22,9 +22,9 @@ let starlingInstallPromptVisible = false;
 
 class StarlingDataWatcher implements vscode.Disposable {
   private disposables: vscode.Disposable[] = [];
-  private refreshTimer: NodeJS.Timeout | undefined;
+  private refreshTimers = new Map<RefreshScope, NodeJS.Timeout>();
 
-  constructor(private readonly onChange: () => void) {
+  constructor(private readonly onChange: (scope: RefreshScope) => void) {
     this.rebuild();
   }
 
@@ -37,42 +37,44 @@ class StarlingDataWatcher implements vscode.Disposable {
 
   dispose(): void {
     this.disposeWatchers();
-    if (this.refreshTimer) {
-      clearTimeout(this.refreshTimer);
-      this.refreshTimer = undefined;
+    for (const timer of this.refreshTimers.values()) {
+      clearTimeout(timer);
     }
+    this.refreshTimers.clear();
   }
 
   private watchRoot(root: string): void {
-    const patterns = [
-      "store.json",
-      "runs.json",
-      "session-index.json",
-      "project-session-index.json",
-      "settings/**/*",
+    const patterns: Array<{ glob: string; scope: RefreshScope }> = [
+      { glob: "store.json", scope: "all" },
+      { glob: "runs.json", scope: "sessions" },
+      { glob: "session-index.json", scope: "sessions" },
+      { glob: "project-session-index.json", scope: "projects" },
+      { glob: "settings/**/*", scope: "models" },
     ];
     for (const pattern of patterns) {
       const watcher = vscode.workspace.createFileSystemWatcher(
-        new vscode.RelativePattern(root, pattern),
+        new vscode.RelativePattern(root, pattern.glob),
         false,
         false,
         false
       );
-      watcher.onDidCreate(() => this.scheduleRefresh());
-      watcher.onDidChange(() => this.scheduleRefresh());
-      watcher.onDidDelete(() => this.scheduleRefresh());
+      watcher.onDidCreate(() => this.scheduleRefresh(pattern.scope));
+      watcher.onDidChange(() => this.scheduleRefresh(pattern.scope));
+      watcher.onDidDelete(() => this.scheduleRefresh(pattern.scope));
       this.disposables.push(watcher);
     }
   }
 
-  private scheduleRefresh(): void {
-    if (this.refreshTimer) {
-      clearTimeout(this.refreshTimer);
+  private scheduleRefresh(scope: RefreshScope): void {
+    const existing = this.refreshTimers.get(scope);
+    if (existing) {
+      clearTimeout(existing);
     }
-    this.refreshTimer = setTimeout(() => {
-      this.refreshTimer = undefined;
-      this.onChange();
+    const timer = setTimeout(() => {
+      this.refreshTimers.delete(scope);
+      this.onChange(scope);
     }, 500);
+    this.refreshTimers.set(scope, timer);
   }
 
   private disposeWatchers(): void {
@@ -82,6 +84,8 @@ class StarlingDataWatcher implements vscode.Disposable {
     this.disposables = [];
   }
 }
+
+type RefreshScope = "all" | "sessions" | "projects" | "models";
 
 function starlingDataRoots(): string[] {
   const roots = [
@@ -114,13 +118,22 @@ export function activate(context: vscode.ExtensionContext): void {
   vscode.window.registerTreeDataProvider("starling-projects", projectsProvider);
   vscode.window.registerTreeDataProvider("starling-models", modelsProvider);
 
-  const refreshAllViews = () => {
+  const refreshViews = (scope: RefreshScope = "all") => {
     cli.clearCliCache();
-    sessionsProvider.refresh();
-    spacesProvider.refresh();
-    projectsProvider.refresh();
-    modelsProvider.refresh();
+    if (scope === "all" || scope === "sessions") {
+      sessionsProvider.refresh();
+    }
+    if (scope === "all") {
+      spacesProvider.refresh();
+    }
+    if (scope === "all" || scope === "projects") {
+      projectsProvider.refresh();
+    }
+    if (scope === "all" || scope === "models") {
+      modelsProvider.refresh();
+    }
   };
+  const refreshAllViews = () => refreshViews();
   const refreshHandler = () => {
     refreshAllViews();
   };
@@ -129,13 +142,13 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("starling.refresh", refreshHandler)
   );
 
-  const dataWatcher = new StarlingDataWatcher(refreshAllViews);
+  const dataWatcher = new StarlingDataWatcher(refreshViews);
   context.subscriptions.push(dataWatcher);
 
   context.subscriptions.push(
     vscode.workspace.onDidSaveTextDocument((document) => {
       if (isStarlingModelProfilePath(document.uri.fsPath)) {
-        refreshAllViews();
+        refreshViews("models");
       }
     })
   );
@@ -143,7 +156,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("starling")) {
-        refreshAllViews();
+        refreshViews();
         dataWatcher.rebuild();
         void checkStarlingCliOnActivation();
       }

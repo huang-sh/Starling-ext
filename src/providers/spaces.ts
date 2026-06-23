@@ -115,7 +115,7 @@ export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
         if (children.length === 0 && pins.length === 0) {
           return [new vscode.TreeItem("(empty)", vscode.TreeItemCollapsibleState.None)];
         }
-        this.hydratePinSessions(pins);
+        await this.hydratePinSessions(pins);
         return [...children, ...pins.map((p) => new PinNode(p, this.sessionLookup.get(p.session_id), element.space))];
       }
     } catch (err) {
@@ -124,7 +124,7 @@ export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
     return [];
   }
 
-  private hydratePinSessions(pins: cli.Bookmark[]): void {
+  private async hydratePinSessions(pins: cli.Bookmark[]): Promise<void> {
     const pending = pins
       .map((pin) => pin.session_id)
       .filter((sessionId) => sessionId && !this.sessionLookup.has(sessionId) && !this.sessionLoads.has(sessionId));
@@ -134,24 +134,19 @@ export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
       this.sessionLoads.add(sessionId);
     }
 
-    void cli.getSessions(pending)
-      .then((sessions) => {
-        for (const sessionId of pending) {
-          this.sessionLoads.delete(sessionId);
-          const session = sessions.get(sessionId);
-          if (session) {
-            this.sessionLookup.set(sessionId, session);
-          }
+    try {
+      const sessions = await cli.getSessions(pending);
+      for (const sessionId of pending) {
+        const session = sessions.get(sessionId);
+        if (session) {
+          this.sessionLookup.set(sessionId, session);
         }
-        if (sessions.size > 0) {
-          this._onDidChange.fire();
-        }
-      })
-      .catch(() => {
-        for (const sessionId of pending) {
-          this.sessionLoads.delete(sessionId);
-        }
-      });
+      }
+    } finally {
+      for (const sessionId of pending) {
+        this.sessionLoads.delete(sessionId);
+      }
+    }
   }
 }
 

@@ -8,16 +8,16 @@ Starling Agent is a VS Code sidebar for browsing, resuming, and organizing Claud
 
 It works with the Starling CLI and shows your local agent history in four focused views: Catalog, Projects, Models, and Monitor.
 
-Current release: **0.1.3**
+Current release: **0.1.4**
 
 - VS Code Marketplace: [`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
-- GitHub Release: [`v0.1.3`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.3)
+- GitHub Release: [`v0.1.4`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.4)
 - CLI package: [`starling-ai`](https://www.npmjs.com/package/starling-ai)
 
 The GitHub release includes the packaged VSIX:
 
 ```text
-starling-ai-0.1.3.vsix
+starling-ai-0.1.4.vsix
 ```
 
 ## Requirements
