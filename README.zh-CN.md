@@ -8,7 +8,7 @@
   <img src="icons/starling.png" alt="Starling Agent logo" width="160">
 </p>
 
-Starling Agent 是一个 VS Code 侧边栏扩展，用来浏览、恢复和整理 Claude Code 与 OpenAI Codex 会话。
+Starling Agent 用来在 VS Code 中启动、切换和组织 Claude Code 与 Codex 会话，支持模型配置、Catalog、项目视图和实时监控。
 
 它配合 Starling CLI 使用，在 VS Code 里提供四个视图：Catalog、Projects、Models、Monitor。
 

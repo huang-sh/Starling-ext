@@ -8,7 +8,7 @@
   <img src="icons/starling.png" alt="Starling Agent logo" width="160">
 </p>
 
-Starling Agent is a VS Code sidebar for browsing, resuming, and organizing Claude Code and OpenAI Codex sessions.
+Launch, switch, and organize Claude Code and Codex sessions with model profiles, catalogs, project views, and VS Code integration.
 
 It works with the Starling CLI and shows your local agent history in four focused views: Catalog, Projects, Models, and Monitor.
 

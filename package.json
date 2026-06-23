@@ -1,7 +1,7 @@
 {
   "name": "starling-ai",
   "displayName": "Starling Agent",
-  "description": "Agent session manager — discover, pin, and organize AI coding sessions",
+  "description": "Launch, switch, and organize Claude Code and Codex sessions with model profiles, catalogs, project views, and VS Code integration.",
   "version": "0.1.4",
   "publisher": "huangsh",
   "icon": "icons/starling.png",
