@@ -496,7 +496,7 @@ function normalizeMonitorSnapshot(raw: unknown): MonitorSnapshot {
     return {
       pinned_total: pinned.length,
       recent_total: recent.length,
-      active: rows.filter((row) => isActiveLiveStatus(row.status)).length,
+      active: rows.filter(isActiveMonitorRow).length,
       pinned,
       recent,
     };
@@ -508,7 +508,7 @@ function normalizeMonitorSnapshot(raw: unknown): MonitorSnapshot {
   return {
     pinned_total: Number.isFinite(obj.pinned_total) ? Number(obj.pinned_total) : pinned.length,
     recent_total: Number.isFinite(obj.recent_total) ? Number(obj.recent_total) : recent.length,
-    active: Number.isFinite(obj.active) ? Number(obj.active) : [...pinned, ...recent].filter((row) => isActiveLiveStatus(row.status)).length,
+    active: [...pinned, ...recent].filter(isActiveMonitorRow).length,
     pinned,
     recent,
   };
@@ -567,8 +567,8 @@ function normalizeLiveStatus(value: unknown): LiveStatus {
   return "unknown";
 }
 
-function isActiveLiveStatus(status: LiveStatus): boolean {
-  return status === "waiting" || status === "running";
+function isActiveMonitorRow(row: MonitorRow): boolean {
+  return row.pid !== undefined;
 }
 
 function normalizeMonitorToolCall(raw: unknown): MonitorToolCall {

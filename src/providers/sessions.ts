@@ -371,7 +371,7 @@ export class SessionsProvider implements vscode.TreeDataProvider<TreeNode> {
   private buildMonitorRoot(snapshot: cli.MonitorSnapshot): TreeNode[] {
     const rows = uniqueMonitorRows([...snapshot.pinned, ...snapshot.recent]);
     const attention = rows.filter((row) => row.status === "waiting");
-    const active = rows.filter((row) => isActiveLiveStatus(row.status));
+    const active = rows.filter(isActiveMonitorRow);
     const nodes: TreeNode[] = [new MonitorSummaryNode(snapshot)];
     if (attention.length > 0) {
       nodes.push(new MonitorGroupNode("attention", sortMonitorRows(attention), "Needs attention"));
@@ -435,8 +435,8 @@ function uniqueMonitorRows(rows: cli.MonitorRow[]): cli.MonitorRow[] {
   return unique;
 }
 
-function isActiveLiveStatus(status: cli.LiveStatus): boolean {
-  return status === "waiting" || status === "running";
+function isActiveMonitorRow(row: cli.MonitorRow): boolean {
+  return row.pid !== undefined;
 }
 
 function sortMonitorRows(rows: cli.MonitorRow[]): cli.MonitorRow[] {
@@ -484,8 +484,9 @@ function summarizeMonitorRows(rows: cli.MonitorRow[]): { attention: number; acti
   const aborted = counts.get("aborted") ?? 0;
   const idle = counts.get("idle") ?? 0;
   const failure = counts.get("failure") ?? 0;
-  const active = waiting + running;
+  const active = rows.filter(isActiveMonitorRow).length;
   const parts = [
+    active ? `${active} active` : "",
     waiting ? `${waiting} waiting` : "",
     running ? `${running} running` : "",
     stale ? `${stale} stale` : "",

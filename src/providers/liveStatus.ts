@@ -179,7 +179,7 @@ function monitorStatusSnapshotsEqual(a: cli.MonitorSnapshot, b: cli.MonitorSnaps
   if (aMap.size !== bMap.size) return false;
   for (const [sid, row] of aMap) {
     const other = bMap.get(sid);
-    if (!other || row.status !== other.status) return false;
+    if (!other || row.status !== other.status || row.pid !== other.pid) return false;
   }
   return true;
 }
