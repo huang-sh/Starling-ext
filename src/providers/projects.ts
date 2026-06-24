@@ -2,8 +2,9 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as vscode from "vscode";
 import * as cli from "../cli";
-import { formatTokenUsage, shortSessionId } from "../sessionDisplay";
+import { formatStatusGlyph, formatTokenUsage, shortSessionId } from "../sessionDisplay";
 import { mdTooltip } from "../tooltip";
+import { iconForStatus, LiveStatusStore } from "./liveStatus";
 
 const PROJECT_SESSION_LIMIT = 30;
 const PROJECT_NODE_MAX_LABEL = 32;
@@ -78,7 +79,10 @@ class ProjectNode extends vscode.TreeItem {
 }
 
 class ProjectSessionNode extends vscode.TreeItem {
-  constructor(public readonly meta: cli.SessionMeta) {
+  constructor(
+    public readonly meta: cli.SessionMeta,
+    public readonly monitor?: cli.MonitorRow
+  ) {
     const shortSession = shortSessionId(meta.session_id);
     const model = meta.model || "-";
     const title = meta.custom_title ? `  ${truncate(meta.custom_title, 36)}` : "";
@@ -89,6 +93,7 @@ class ProjectSessionNode extends vscode.TreeItem {
     this.description = meta.project_path ? truncate(meta.project_path, PROJECT_SESSION_DESC_MAX) : "";
     this.tooltip = mdTooltip([
       ["Session", `\`${meta.session_id}\``],
+      ["Status", monitor ? formatStatusGlyph(monitor.status) : "-"],
       ["Provider", meta.provider],
       ["Model", meta.model || "-"],
       ["Modified", meta.modified_at],
@@ -98,7 +103,7 @@ class ProjectSessionNode extends vscode.TreeItem {
       ["Last prompt", meta.first_prompt ?? "-"],
     ]);
     this.contextValue = "project-session";
-    this.iconPath = new vscode.ThemeIcon("history");
+    this.iconPath = monitor ? iconForStatus(monitor.status) : new vscode.ThemeIcon("history");
   }
 }
 
@@ -178,6 +183,10 @@ export class ProjectsProvider implements vscode.TreeDataProvider<TreeNode> {
   private forceRebuildIndex = false;
   private projectSessionVisibleLimits = new Map<string, number>();
 
+  constructor(private readonly liveStatus: LiveStatusStore) {
+    this.liveStatus.onDidStatusChange(() => this._onDidChange.fire());
+  }
+
   private get cacheFilePath(): string {
     return path.join(cli.starlingHomeRoot(), STARLING_SESSION_INDEX_FILE);
   }
@@ -233,7 +242,9 @@ export class ProjectsProvider implements vscode.TreeDataProvider<TreeNode> {
         if (sliced.length === 0) {
           return [new vscode.TreeItem("(no sessions)", vscode.TreeItemCollapsibleState.None)];
         }
-        const children: TreeNode[] = sliced.map((session) => new ProjectSessionNode(session));
+        const children: TreeNode[] = sliced.map(
+          (session) => new ProjectSessionNode(session, this.liveStatus.getMonitor(session.session_id))
+        );
         if (effectiveLimit > 0 && sessions.length > effectiveLimit) {
           children.push(new LoadMoreProjectSessionsNode(normalizedPath));
         }

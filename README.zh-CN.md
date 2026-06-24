@@ -8,20 +8,20 @@
   <img src="icons/starling.png" alt="Starling Agent logo" width="160">
 </p>
 
-Starling Agent 用来在 VS Code 中启动、切换和组织 Claude Code 与 Codex 会话，支持模型配置、Catalog、项目视图和实时监控。
+Starling Agent 是 Claude Code 与 Codex 会话的 VS Code 监控与工作台，支持实时状态、Catalog、Projects、模型配置、resume 和 fork。
 
-它配合 Starling CLI 使用，在 VS Code 里提供四个视图：Catalog、Projects、Models、Monitor。
+它配合 Starling CLI 使用，把本地 agent 历史整理成四个侧边栏视图：Monitor、Catalog、Projects、Models。
 
-当前版本：**0.1.5**
+当前版本：**0.1.6**
 
 - VS Code Marketplace：[`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
-- GitHub Release：[`v0.1.5`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.5)
+- GitHub Release：[`v0.1.6`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.6)
 - CLI 包：[`starling-ai`](https://www.npmjs.com/package/starling-ai)
 
 GitHub Release 会附带打包好的 VSIX：
 
 ```text
-starling-ai-0.1.5.vsix
+starling-ai-0.1.6.vsix
 ```
 
 ## 安装要求

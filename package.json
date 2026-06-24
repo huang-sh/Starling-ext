@@ -1,8 +1,8 @@
 {
   "name": "starling-ai",
   "displayName": "Starling Agent",
-  "description": "Launch, switch, and organize Claude Code and Codex sessions with model profiles, catalogs, project views, and VS Code integration.",
-  "version": "0.1.5",
+  "description": "VS Code monitor and workspace for Claude Code and Codex sessions: live status, catalogs, projects, model profiles, resume, and fork.",
+  "version": "0.1.6",
   "publisher": "huangsh",
   "icon": "icons/starling.png",
   "license": "MIT",

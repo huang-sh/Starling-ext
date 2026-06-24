@@ -12,6 +12,7 @@ import {
   shortSessionId,
 } from "../sessionDisplay";
 import { clearProblem, logError, reportProblem } from "../logging";
+import { iconForStatus, LiveStatusStore, statusColor } from "./liveStatus";
 
 // --- Tree item types ---
 
@@ -72,11 +73,11 @@ class MonitorSessionNode extends vscode.TreeItem {
     };
 
     const ctx = formatCtxPct(monitor.ctx_pct);
-    const tokens = `${formatCompactTokens(monitor.tokens_in)}/${formatCompactTokens(monitor.tokens_out)}`;
+    const tokens = `${formatCompactTokens(monitor.tokens_in)}/${formatCompactTokens(monitor.tokens_out)}/${formatCompactTokens(monitor.tokens_cache)}`;
     const parts = [
       monitor.model || "",
       ctx !== "-" ? `ctx ${ctx}` : "",
-      tokens !== "0/0" ? `tok ${tokens}` : "",
+      tokens !== "0/0/0" ? `tok ${tokens}` : "",
       monitor.current_task ? truncate(monitor.current_task, 42) : "",
     ].filter(Boolean);
     this.description = parts.join("  ·  ");
@@ -113,48 +114,6 @@ class SessionNode extends vscode.TreeItem {
     this.tooltip = buildSessionTooltip(meta, isPinned, monitor);
     this.iconPath = monitor ? iconForStatus(monitor.status) : new vscode.ThemeIcon("terminal");
     this.contextValue = isPinned ? "session-pinned" : "session-unpinned";
-  }
-}
-
-function iconForStatus(status: cli.LiveStatus): vscode.ThemeIcon {
-  switch (status) {
-    case "waiting":
-      return new vscode.ThemeIcon("warning", statusColor(status));
-    case "running":
-      return new vscode.ThemeIcon("sync~spin", statusColor(status));
-    case "stale_running":
-      return new vscode.ThemeIcon("debug-pause", statusColor(status));
-    case "aborted":
-      return new vscode.ThemeIcon("debug-stop", statusColor(status));
-    case "idle":
-      return new vscode.ThemeIcon("circle-large-outline", statusColor(status));
-    case "failure":
-      return new vscode.ThemeIcon("error", statusColor(status));
-    case "stopped":
-      return new vscode.ThemeIcon("debug-stop", statusColor(status));
-    default:
-      return new vscode.ThemeIcon("question", statusColor("unknown"));
-  }
-}
-
-function statusColor(status: cli.LiveStatus): vscode.ThemeColor {
-  switch (status) {
-    case "waiting":
-      return new vscode.ThemeColor("charts.yellow");
-    case "running":
-      return new vscode.ThemeColor("charts.green");
-    case "stale_running":
-      return new vscode.ThemeColor("charts.orange");
-    case "aborted":
-      return new vscode.ThemeColor("charts.orange");
-    case "idle":
-      return new vscode.ThemeColor("charts.blue");
-    case "failure":
-      return new vscode.ThemeColor("charts.red");
-    case "stopped":
-      return new vscode.ThemeColor("descriptionForeground");
-    default:
-      return new vscode.ThemeColor("disabledForeground");
   }
 }
 
@@ -322,38 +281,18 @@ export class SessionsProvider implements vscode.TreeDataProvider<TreeNode> {
   private _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._onDidChange.event;
   private readonly visibleLimits = new Map<string, number>();
-
-  // Live monitor cache. Keyed by session_id. Populated async after the tree
-  // returns its first (static-tooltip) render; a single follow-up refresh
-  // re-renders items with the live section appended. Bounded by monitor's own
-  // output (≤ ~30 pinned + 8 recent + all running).
-  private monitorBySid = new Map<string, cli.MonitorRow>();
-  private monitorFetchInFlight: Promise<void> | null = null;
-  private monitorRefreshQueued = false;
   private treeView: vscode.TreeView<TreeNode> | undefined;
-  private monitorTimer: NodeJS.Timeout | undefined;
-  private disposed = false;
+
+  constructor(private readonly liveStatus: LiveStatusStore) {
+    this.liveStatus.onDidChange(() => {
+      this.updateBadge();
+      this._onDidChange.fire();
+    });
+  }
 
   setTreeView(treeView: vscode.TreeView<TreeNode>): void {
     this.treeView = treeView;
     this.updateBadge();
-  }
-
-  startBackgroundMonitoring(): vscode.Disposable {
-    const tick = async () => {
-      if (this.disposed) return;
-      await this.refreshMonitorSnapshot({ force: true });
-      if (this.disposed) return;
-      this.monitorTimer = setTimeout(tick, getMonitorRefreshMs());
-    };
-    this.monitorTimer = setTimeout(tick, 0);
-    return new vscode.Disposable(() => {
-      this.disposed = true;
-      if (this.monitorTimer) {
-        clearTimeout(this.monitorTimer);
-        this.monitorTimer = undefined;
-      }
-    });
   }
 
   refresh(): void {
@@ -366,19 +305,18 @@ export class SessionsProvider implements vscode.TreeDataProvider<TreeNode> {
 
   async getChildren(element?: TreeNode): Promise<TreeNode[]> {
     if (!element) {
-      try {
-        const snapshot = await cli.getMonitorSnapshot({ recent: true, allowStale: true });
-        this.replaceMonitorSnapshot(snapshot);
+      const snapshot = await this.liveStatus.ensureSnapshot();
+      if (snapshot) {
+        clearProblem("monitor");
         return this.buildMonitorRoot(snapshot);
-      } catch (err) {
-        const message = `Monitor unavailable: ${errorMessage(err)}`;
-        logError(message, err);
-        reportProblem("monitor", message);
-        return [
-          errorItem("Monitor unavailable", err),
-          new MonitorGroupNode("static", [], "Static sessions", vscode.TreeItemCollapsibleState.Expanded),
-        ];
       }
+      const message = "Monitor unavailable: no live status snapshot";
+      logError(message);
+      reportProblem("monitor", message);
+      return [
+        errorItem("Monitor unavailable", message),
+        new MonitorGroupNode("static", [], "Static sessions", vscode.TreeItemCollapsibleState.Expanded),
+      ];
     }
     if (element instanceof MonitorGroupNode) {
       if (element.kind === "static") {
@@ -403,13 +341,11 @@ export class SessionsProvider implements vscode.TreeDataProvider<TreeNode> {
         }
         const pinnedIds = await this.getPinnedSessionIds();
         const items: TreeNode[] = sessions.map(
-          (s) => new SessionNode(s, pinnedIds.has(s.session_id), this.monitorBySid.get(s.session_id))
+          (s) => new SessionNode(s, pinnedIds.has(s.session_id), this.liveStatus.getMonitor(s.session_id))
         );
         if (limit > 0 && sessions.length >= limit) {
           items.push(new LoadMoreSessionsNode(element.provider));
         }
-        // Async enrich: fetch monitor snapshot (debounced) and re-render once.
-        this.scheduleMonitorRefresh();
         return items;
       } catch (err) {
         return [errorItem("Error loading sessions", err)];
@@ -430,52 +366,6 @@ export class SessionsProvider implements vscode.TreeDataProvider<TreeNode> {
   resetLimits(): void {
     this.visibleLimits.clear();
     this._onDidChange.fire();
-  }
-
-  /**
-   * Debounced + idempotent scheduler. Multiple getChildren calls in rapid
-   * succession (e.g. expanding both claude and codex at once) coalesce into a
-   * single monitor fetch.
-   */
-  private scheduleMonitorRefresh(): void {
-    if (this.monitorRefreshQueued || this.monitorFetchInFlight) return;
-    this.monitorRefreshQueued = true;
-    setTimeout(() => {
-      this.monitorRefreshQueued = false;
-      this.refreshMonitorSnapshot({ force: false }).catch(() => undefined);
-    }, 50);
-  }
-
-  private async refreshMonitorSnapshot(opts: { force: boolean }): Promise<void> {
-    if (this.monitorFetchInFlight) return this.monitorFetchInFlight;
-    const p = (async () => {
-      try {
-        const snap = await cli.getMonitorSnapshot({ recent: true, force: opts.force });
-        const next = monitorMapFromSnapshot(snap);
-        // Only fire if visible tooltip fields changed — otherwise the refresh
-        // loop (fire → getChildren → schedule → fetch → fire) never settles.
-        const changed = !this.monitorMapsEqual(this.monitorBySid, next);
-        this.monitorBySid = next;
-        this.updateBadge();
-        if (changed) this._onDidChange.fire();
-      } catch (err) {
-        // Monitor unavailable (CLI error / not installed). Silently keep
-        // static-only tooltips — the tree must never break because of monitor.
-        const message = `Monitor refresh failed: ${errorMessage(err)}`;
-        logError(message, err);
-        reportProblem("monitor", message, vscode.DiagnosticSeverity.Warning);
-      } finally {
-        this.monitorFetchInFlight = null;
-      }
-    })();
-    this.monitorFetchInFlight = p;
-    return p;
-  }
-
-  private replaceMonitorSnapshot(snapshot: cli.MonitorSnapshot): void {
-    this.monitorBySid = monitorMapFromSnapshot(snapshot);
-    clearProblem("monitor");
-    this.updateBadge();
   }
 
   private buildMonitorRoot(snapshot: cli.MonitorSnapshot): TreeNode[] {
@@ -499,7 +389,7 @@ export class SessionsProvider implements vscode.TreeDataProvider<TreeNode> {
 
   private updateBadge(): void {
     if (!this.treeView) return;
-    const summary = summarizeMonitorRows([...this.monitorBySid.values()]);
+    const summary = summarizeMonitorRows(this.liveStatus.getRows());
     if (summary.attention > 0) {
       this.treeView.badge = {
         value: summary.attention,
@@ -513,32 +403,6 @@ export class SessionsProvider implements vscode.TreeDataProvider<TreeNode> {
     } else {
       this.treeView.badge = undefined;
     }
-  }
-
-  private monitorMapsEqual(
-    a: Map<string, cli.MonitorRow>,
-    b: Map<string, cli.MonitorRow>
-  ): boolean {
-    if (a.size !== b.size) return false;
-    for (const [sid, row] of a) {
-      const other = b.get(sid);
-      if (!other) return false;
-      if (
-        row.status !== other.status ||
-        row.pid !== other.pid ||
-        row.ctx_pct !== other.ctx_pct ||
-        row.last_tool !== other.last_tool ||
-        row.tokens_in !== other.tokens_in ||
-        row.tokens_out !== other.tokens_out ||
-        row.tokens_cache !== other.tokens_cache ||
-        row.current_task !== other.current_task ||
-        row.started_at_ms !== other.started_at_ms ||
-        row.compaction_count !== other.compaction_count
-      ) {
-        return false;
-      }
-    }
-    return true;
   }
 
   private getVisibleLimit(provider: string): number {
@@ -557,18 +421,6 @@ export class SessionsProvider implements vscode.TreeDataProvider<TreeNode> {
       return new Set();
     }
   }
-}
-
-function monitorMapFromSnapshot(snapshot: cli.MonitorSnapshot): Map<string, cli.MonitorRow> {
-  const next = new Map<string, cli.MonitorRow>();
-  for (const row of [...snapshot.pinned, ...snapshot.recent]) {
-    if (!row.session_id) continue;
-    next.set(row.session_id, row);
-    if (row.canonical_session_id) {
-      next.set(row.canonical_session_id, row);
-    }
-  }
-  return next;
 }
 
 function uniqueMonitorRows(rows: cli.MonitorRow[]): cli.MonitorRow[] {
@@ -619,13 +471,6 @@ function getSessionsLimit(): number {
   const normalized = Number(configured);
   if (!Number.isFinite(normalized)) return 50;
   return Math.max(0, Math.floor(normalized));
-}
-
-function getMonitorRefreshMs(): number {
-  const configured = vscode.workspace.getConfiguration("starling").get<number>("monitorRefreshSeconds", 5);
-  const normalized = Number(configured);
-  if (!Number.isFinite(normalized) || normalized <= 0) return 3000;
-  return Math.max(1000, Math.floor(normalized * 1000));
 }
 
 function summarizeMonitorRows(rows: cli.MonitorRow[]): { attention: number; active: number; tooltip: string } {

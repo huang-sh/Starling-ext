@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import * as cli from "../cli";
-import { shortSessionId } from "../sessionDisplay";
+import { formatStatusGlyph, shortSessionId } from "../sessionDisplay";
 import { mdTooltip } from "../tooltip";
+import { iconForStatus, LiveStatusStore } from "./liveStatus";
 
 // --- Tree item types ---
 
@@ -35,7 +36,8 @@ class SpaceNode extends vscode.TreeItem {
 class PinNode extends vscode.TreeItem {
   constructor(
     public readonly bookmark: cli.Bookmark,
-    public readonly catalog?: cli.SpaceWithPins
+    public readonly catalog?: cli.SpaceWithPins,
+    public readonly monitor?: cli.MonitorRow
   ) {
     const hasTitle = Boolean(bookmark.title && bookmark.title.trim());
     super(
@@ -44,9 +46,10 @@ class PinNode extends vscode.TreeItem {
     );
     // Display title and session ID exclusively: prefer title, fall back to session ID.
     this.description = hasTitle ? "" : shortSessionId(bookmark.session_id);
-    this.tooltip = mdTooltip([
+    const tooltipRows: Array<[string, string]> = [
       ["Pin", `\`${bookmark.id}\``],
       ["Session", `\`${bookmark.session_id}\``],
+      ["Status", monitor ? formatStatusGlyph(monitor.status) : "-"],
       ["Agent", bookmark.provider || "-"],
       ["Project", bookmark.project_path || "-"],
       ["First prompt", bookmark.first_prompt || "-"],
@@ -54,8 +57,9 @@ class PinNode extends vscode.TreeItem {
       ["Tags", bookmark.tags.join(", ") || "-"],
       ["Updated", bookmark.updated_at],
       ["Created", bookmark.created_at],
-    ]);
-    this.iconPath = new vscode.ThemeIcon("bookmark");
+    ];
+    this.tooltip = mdTooltip(tooltipRows);
+    this.iconPath = monitor ? iconForStatus(monitor.status) : new vscode.ThemeIcon("bookmark");
     this.contextValue = "session-pin";
   }
 }
@@ -82,6 +86,10 @@ function errorItem(label: string, err: unknown): vscode.TreeItem {
 export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
   private _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._onDidChange.event;
+
+  constructor(private readonly liveStatus: LiveStatusStore) {
+    this.liveStatus.onDidStatusChange(() => this._onDidChange.fire());
+  }
 
   refresh(): void {
     this._onDidChange.fire();
@@ -110,7 +118,10 @@ export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
         if (children.length === 0 && pins.length === 0) {
           return [new vscode.TreeItem("(empty)", vscode.TreeItemCollapsibleState.None)];
         }
-        return [...children, ...pins.map((p) => new PinNode(p, details))];
+        return [
+          ...children,
+          ...pins.map((p) => new PinNode(p, details, this.liveStatus.getMonitor(p.session_id))),
+        ];
       }
     } catch (err) {
       return [errorItem("Error loading catalogs", err)];

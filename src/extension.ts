@@ -5,6 +5,7 @@ import { SessionsProvider } from "./providers/sessions";
 import { SpacesProvider } from "./providers/spaces";
 import { ProjectsProvider } from "./providers/projects";
 import { ModelsProvider } from "./providers/models";
+import { LiveStatusStore } from "./providers/liveStatus";
 import { SessionDetailPanel } from "./views/sessionDetail";
 import * as cli from "./cli";
 import { shortSessionId } from "./sessionDisplay";
@@ -104,16 +105,17 @@ export function activate(context: vscode.ExtensionContext): void {
   initializeLogging(context);
   logInfo("Starling extension activated.");
 
-  const sessionsProvider = new SessionsProvider();
-  const spacesProvider = new SpacesProvider();
-  const projectsProvider = new ProjectsProvider();
+  const liveStatus = new LiveStatusStore();
+  const sessionsProvider = new SessionsProvider(liveStatus);
+  const spacesProvider = new SpacesProvider(liveStatus);
+  const projectsProvider = new ProjectsProvider(liveStatus);
   const modelsProvider = new ModelsProvider();
 
   const sessionsTree = vscode.window.createTreeView("starling-sessions", {
     treeDataProvider: sessionsProvider,
   });
   sessionsProvider.setTreeView(sessionsTree);
-  context.subscriptions.push(sessionsTree, sessionsProvider.startBackgroundMonitoring());
+  context.subscriptions.push(sessionsTree, liveStatus.startBackgroundMonitoring());
   vscode.window.registerTreeDataProvider("starling-spaces", spacesProvider);
   vscode.window.registerTreeDataProvider("starling-projects", projectsProvider);
   vscode.window.registerTreeDataProvider("starling-models", modelsProvider);
@@ -297,14 +299,14 @@ export function activate(context: vscode.ExtensionContext): void {
       const sessionId = await pickSessionId(node);
       if (!sessionId) return;
 
-      const prompt = await vscode.window.showInputBox({
+      const title = await vscode.window.showInputBox({
         title: `Fork session: ${shortSessionId(sessionId)}`,
-        placeHolder: "Optional first prompt for the forked session",
+        placeHolder: "Optional title for the forked session",
       });
-      if (prompt === undefined) return;
+      if (title === undefined) return;
 
       try {
-        await forkSessionInTerminal(sessionId, node, normalizeOptionalInput(prompt));
+        await forkSessionInTerminal(sessionId, node, normalizeOptionalInput(title));
       } catch (err) {
         await showCommandError("Fork session", err);
       }
@@ -1018,7 +1020,7 @@ async function resumeSessionInTerminal(sessionId: string): Promise<void> {
 async function forkSessionInTerminal(
   sessionId: string,
   node: unknown,
-  prompt?: string
+  title?: string
 ): Promise<void> {
   const resolved = await resolveSessionForResume(sessionId);
   if (!resolved) {
@@ -1036,7 +1038,7 @@ async function forkSessionInTerminal(
     cwd: meta.project_path || undefined,
     env: terminalStarlingEnv(),
   });
-  terminal.sendText(starlingForkCommand(meta, agent, setting, catalog, prompt));
+  terminal.sendText(starlingForkCommand(meta, agent, setting, catalog, title));
   terminal.show();
 }
 
@@ -1063,7 +1065,7 @@ function starlingForkCommand(
   agent: "claude" | "codex",
   setting?: string,
   catalog?: string,
-  prompt?: string
+  title?: string
 ): string {
   const args = ["run"];
   if (setting) {
@@ -1072,17 +1074,14 @@ function starlingForkCommand(
   if (catalog) {
     args.push("--catalog", shellArg(catalog));
   }
+  if (title) {
+    args.push("--title", shellArg(title));
+  }
   args.push(agent);
   if (agent === "codex") {
     args.push("fork", shellArg(meta.session_id));
-    if (prompt) {
-      args.push(shellArg(prompt));
-    }
   } else {
     args.push("--resume", shellArg(meta.session_id), "--fork-session");
-    if (prompt) {
-      args.push(shellArg(prompt));
-    }
   }
   return `${starlingCliCommand()} ${args.join(" ")}`;
 }
