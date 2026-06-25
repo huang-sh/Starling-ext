@@ -1,4 +1,4 @@
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
@@ -127,6 +127,42 @@ export interface ModelConfigSummary {
   wireApi?: string;
   auth?: string;
   error?: string;
+}
+
+export interface McpServerConfig {
+  type: string;
+  builtin?: boolean;
+  enabled?: boolean;
+  command?: string;
+  args?: string[];
+  url?: string;
+  env?: Record<string, string>;
+  headers?: Record<string, string>;
+}
+
+export interface McpServerSummary extends McpServerConfig {
+  name: string;
+}
+
+export interface McpServerList {
+  mcpServers: Record<string, McpServerConfig>;
+}
+
+export interface McpProfileList {
+  default_profile?: string | null;
+  profiles: Record<string, string[]>;
+}
+
+export interface McpToolSummary {
+  name: string;
+  description?: string;
+  required: string[];
+  properties: string[];
+}
+
+export interface StarlingConfigSummary {
+  effectiveHomePath?: string;
+  effective_home_path?: string;
 }
 
 /**
@@ -304,6 +340,23 @@ export function starlingHomeRoot(): string {
     }
   }
   return join(homedir(), ".starling");
+}
+
+export function mcpConfigPath(): string {
+  return join(starlingHomeRoot(), "mcp.json");
+}
+
+export async function mcpConfigPathFromCli(): Promise<string> {
+  try {
+    const raw = await execStarlingJson<StarlingConfigSummary>(["config", "show", "--json"], { timeout: DEFAULT_JSON_TIMEOUT });
+    const effectiveHome = raw.effectiveHomePath || raw.effective_home_path;
+    if (typeof effectiveHome === "string" && effectiveHome.trim()) {
+      return join(expandHomePath(effectiveHome.trim()), "mcp.json");
+    }
+  } catch {
+    // Fall back to the extension-side resolver for older Starling CLI builds.
+  }
+  return mcpConfigPath();
 }
 
 function starlingCommand(args: string[]): { file: string; args: string[] } {
@@ -825,6 +878,237 @@ export async function listModels(agent?: string): Promise<ModelConfigSummary[]> 
   return getCachedResult<ModelConfigSummary[]>(`modelList:${cacheKeyForCommand(args)}`, () =>
     execStarlingJson<ModelConfigSummary[]>(args, { timeout: DEFAULT_JSON_TIMEOUT })
   );
+}
+
+export async function mcpListText(): Promise<string> {
+  return execStarlingRaw(["mcp", "list"], { timeout: DEFAULT_TEXT_TIMEOUT });
+}
+
+export async function listMcpServers(): Promise<McpServerSummary[]> {
+  const args = ["mcp", "list", "--json"];
+  return getCachedResult<McpServerSummary[]>(`mcpList:${cacheKeyForCommand(args)}`, async () => {
+    const raw = await execStarlingJson<McpServerList>(args, { timeout: DEFAULT_JSON_TIMEOUT });
+    const servers = raw && typeof raw === "object" && raw.mcpServers && typeof raw.mcpServers === "object"
+      ? raw.mcpServers
+      : {};
+    return Object.entries(servers).map(([name, server]) => ({
+      name,
+      ...normalizeMcpServer(server),
+    }));
+  });
+}
+
+export async function listMcpProfiles(): Promise<McpProfileList> {
+  const args = ["mcp", "profile", "list", "--json"];
+  return getCachedResult<McpProfileList>(`mcpProfiles:${cacheKeyForCommand(args)}`, async () => {
+    const raw = await execStarlingJson<Partial<McpProfileList>>(args, { timeout: DEFAULT_JSON_TIMEOUT });
+    return {
+      default_profile: typeof raw.default_profile === "string" ? raw.default_profile : null,
+      profiles: raw.profiles && typeof raw.profiles === "object" ? raw.profiles : {},
+    };
+  });
+}
+
+export async function listMcpServerTools(server: McpServerSummary): Promise<McpToolSummary[]> {
+  const cacheKey = `mcpTools:${server.name}:${JSON.stringify(server)}`;
+  return getCachedResult<McpToolSummary[]>(cacheKey, () => fetchMcpServerTools(server));
+}
+
+async function fetchMcpServerTools(server: McpServerSummary): Promise<McpToolSummary[]> {
+  if (server.enabled === false) return [];
+  if ((server.type || "stdio") !== "stdio") {
+    throw new Error(`Tool listing is only supported for stdio MCP servers today.`);
+  }
+  const command = server.command?.trim();
+  if (!command) {
+    throw new Error(`MCP server '${server.name}' has no command.`);
+  }
+
+  const messages = await callMcpStdio({
+    command,
+    args: server.args || [],
+    env: expandMcpEnv(server.env),
+    timeoutMs: 12_000,
+  });
+  const tools = extractMcpTools(messages);
+  return tools.map(normalizeMcpTool).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+type McpStdioCall = {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  timeoutMs: number;
+};
+
+async function callMcpStdio(call: McpStdioCall): Promise<unknown[]> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(call.command, call.args, {
+      env: { ...process.env, ...call.env },
+      shell: process.platform === "win32",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    const messages: unknown[] = [];
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    const finish = (err?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill();
+      if (err) {
+        reject(err);
+      } else {
+        resolve(messages);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      if (messages.some((message) => isToolsListResponse(message))) {
+        finish();
+      } else {
+        const detail = stderr.trim() ? ` stderr=${stderr.trim().slice(0, 400)}` : "";
+        finish(new Error(`Timed out while listing MCP tools for '${call.command}'.${detail}`));
+      }
+    }, call.timeoutMs);
+
+    child.on("error", (err) => finish(err));
+    child.on("exit", () => {
+      if (messages.some((message) => isToolsListResponse(message))) {
+        finish();
+      } else if (!settled) {
+        const detail = stderr.trim() ? `: ${stderr.trim().slice(0, 400)}` : "";
+        finish(new Error(`MCP server exited before returning tools${detail}`));
+      }
+    });
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf-8");
+      const parsed = drainJsonMessages(stdout);
+      stdout = parsed.rest;
+      messages.push(...parsed.messages);
+      if (messages.some((message) => isToolsListResponse(message))) {
+        finish();
+      }
+    });
+
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf-8");
+    });
+
+    writeMcpJson(child.stdin, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "starling-vscode", version: "0.0.0" },
+      },
+    });
+    writeMcpJson(child.stdin, {
+      jsonrpc: "2.0",
+      method: "notifications/initialized",
+      params: {},
+    });
+    writeMcpJson(child.stdin, {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/list",
+      params: {},
+    });
+  });
+}
+
+function writeMcpJson(stdin: NodeJS.WritableStream, message: unknown): void {
+  stdin.write(`${JSON.stringify(message)}\n`);
+}
+
+function drainJsonMessages(buffer: string): { messages: unknown[]; rest: string } {
+  const messages: unknown[] = [];
+  const lines = buffer.split(/\r?\n/);
+  const rest = lines.pop() || "";
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      messages.push(JSON.parse(trimmed));
+    } catch {
+      // Ignore non-JSON log lines written to stdout by third-party servers.
+    }
+  }
+  return { messages, rest };
+}
+
+function isToolsListResponse(message: unknown): boolean {
+  const obj = message as { id?: unknown; result?: { tools?: unknown } };
+  return obj?.id === 2 && Array.isArray(obj?.result?.tools);
+}
+
+function extractMcpTools(messages: unknown[]): unknown[] {
+  for (const message of messages) {
+    const obj = message as { id?: unknown; result?: { tools?: unknown } };
+    if (obj?.id === 2 && Array.isArray(obj.result?.tools)) {
+      return obj.result.tools;
+    }
+  }
+  return [];
+}
+
+function normalizeMcpTool(raw: unknown): McpToolSummary {
+  const tool = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const schema = (tool.inputSchema && typeof tool.inputSchema === "object" ? tool.inputSchema : {}) as Record<string, unknown>;
+  const properties = schema.properties && typeof schema.properties === "object"
+    ? Object.keys(schema.properties as Record<string, unknown>)
+    : [];
+  return {
+    name: typeof tool.name === "string" ? tool.name : "(unnamed tool)",
+    description: typeof tool.description === "string" ? tool.description : undefined,
+    required: Array.isArray(schema.required) ? schema.required.map((item) => String(item)) : [],
+    properties,
+  };
+}
+
+function expandMcpEnv(env?: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env || {})) {
+    const match = value.match(/^\$\{([^}]+)\}$/);
+    if (match) {
+      const envValue = process.env[match[1]];
+      if (envValue !== undefined) {
+        out[key] = envValue;
+      }
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
+function normalizeMcpServer(raw: unknown): McpServerConfig {
+  const server = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return {
+    type: typeof server.type === "string" ? server.type : "stdio",
+    builtin: Boolean(server.builtin),
+    enabled: typeof server.enabled === "boolean" ? server.enabled : undefined,
+    command: typeof server.command === "string" ? server.command : undefined,
+    args: Array.isArray(server.args) ? server.args.map((arg) => String(arg)) : undefined,
+    url: typeof server.url === "string" ? server.url : undefined,
+    env: normalizeStringRecord(server.env),
+    headers: normalizeStringRecord(server.headers),
+  };
+}
+
+function normalizeStringRecord(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    out[key] = String(value ?? "");
+  }
+  return out;
 }
 
 export async function deleteModelProfile(model: ModelConfigSummary): Promise<void> {

@@ -2,7 +2,7 @@
   "name": "starling-ai",
   "displayName": "Starling Agent",
   "description": "VS Code monitor and workspace for Claude Code and Codex sessions: live status, catalogs, projects, model profiles, resume, and fork.",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "publisher": "huangsh",
   "icon": "icons/starling.png",
   "license": "MIT",
@@ -22,6 +22,7 @@
     "onView:starling-spaces",
     "onView:starling-projects",
     "onView:starling-models",
+    "onView:starling-mcp",
     "onView:starling-sessions",
     "onCommand:starling.refresh",
     "onCommand:starling.resume",
@@ -45,6 +46,9 @@
     "onCommand:starling.modelStart",
     "onCommand:starling.modelStartInCatalog",
     "onCommand:starling.modelDelete",
+    "onCommand:starling.mcpList",
+    "onCommand:starling.mcpOpenConfig",
+    "onCommand:starling.mcpCopyName",
     "onCommand:starling.copySessionId",
     "onCommand:starling.catalogList",
     "onCommand:starling.catalogTree",
@@ -93,6 +97,11 @@
           "id": "starling-models",
           "name": "Models",
           "icon": "$(sparkle)"
+        },
+        {
+          "id": "starling-mcp",
+          "name": "MCP",
+          "icon": "$(plug)"
         },
         {
           "id": "starling-sessions",
@@ -223,6 +232,23 @@
         "category": "Starling",
         "title": "Delete Model Profile",
         "icon": "$(trash)"
+      },
+      {
+        "command": "starling.mcpList",
+        "category": "Starling",
+        "title": "List MCP Servers"
+      },
+      {
+        "command": "starling.mcpOpenConfig",
+        "category": "Starling",
+        "title": "Open MCP Config",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "starling.mcpCopyName",
+        "category": "Starling",
+        "title": "Copy MCP Server Name",
+        "icon": "$(copy)"
       },
       {
         "command": "starling.catalogList",
@@ -417,6 +443,16 @@
           "group": "modelContext@9"
         },
         {
+          "command": "starling.mcpCopyName",
+          "when": "viewItem == mcp-server",
+          "group": "mcpContext@1"
+        },
+        {
+          "command": "starling.mcpOpenConfig",
+          "when": "viewItem == mcp-server || viewItem == mcp-tool || viewItem == mcp-profile || viewItem == mcp-profile-server || viewItem == mcp-root",
+          "group": "mcpContext@2"
+        },
+        {
           "command": "starling.openProject",
           "when": "viewItem == project || viewItem == project-folder",
           "group": "projectContext@1"
@@ -524,8 +560,13 @@
           "group": "navigation@1"
         },
         {
+          "command": "starling.mcpOpenConfig",
+          "when": "view == starling-mcp",
+          "group": "navigation@1"
+        },
+        {
           "command": "starling.refresh",
-          "when": "view == starling-sessions || view == starling-spaces || view == starling-projects || view == starling-models",
+          "when": "view == starling-sessions || view == starling-spaces || view == starling-projects || view == starling-models || view == starling-mcp",
           "group": "navigation@9"
         }
       ],

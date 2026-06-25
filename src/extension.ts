@@ -5,6 +5,7 @@ import { SessionsProvider } from "./providers/sessions";
 import { SpacesProvider } from "./providers/spaces";
 import { ProjectsProvider } from "./providers/projects";
 import { ModelsProvider } from "./providers/models";
+import { McpProvider, extractMcpServerName } from "./providers/mcp";
 import { LiveStatusStore } from "./providers/liveStatus";
 import { SessionDetailPanel } from "./views/sessionDetail";
 import * as cli from "./cli";
@@ -51,6 +52,7 @@ class StarlingDataWatcher implements vscode.Disposable {
       { glob: "session-index.json", scope: "sessions" },
       { glob: "project-session-index.json", scope: "projects" },
       { glob: "settings/**/*", scope: "models" },
+      { glob: "mcp.json", scope: "mcp" },
     ];
     for (const pattern of patterns) {
       const watcher = vscode.workspace.createFileSystemWatcher(
@@ -86,7 +88,7 @@ class StarlingDataWatcher implements vscode.Disposable {
   }
 }
 
-type RefreshScope = "all" | "sessions" | "projects" | "models";
+type RefreshScope = "all" | "sessions" | "projects" | "models" | "mcp";
 
 function starlingDataRoots(): string[] {
   const roots = [
@@ -110,6 +112,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const spacesProvider = new SpacesProvider(liveStatus);
   const projectsProvider = new ProjectsProvider(liveStatus);
   const modelsProvider = new ModelsProvider();
+  const mcpProvider = new McpProvider();
 
   const sessionsTree = vscode.window.createTreeView("starling-sessions", {
     treeDataProvider: sessionsProvider,
@@ -119,6 +122,7 @@ export function activate(context: vscode.ExtensionContext): void {
   vscode.window.registerTreeDataProvider("starling-spaces", spacesProvider);
   vscode.window.registerTreeDataProvider("starling-projects", projectsProvider);
   vscode.window.registerTreeDataProvider("starling-models", modelsProvider);
+  vscode.window.registerTreeDataProvider("starling-mcp", mcpProvider);
 
   const refreshViews = (scope: RefreshScope = "all") => {
     cli.clearCliCache();
@@ -133,6 +137,9 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     if (scope === "all" || scope === "models") {
       modelsProvider.refresh();
+    }
+    if (scope === "all" || scope === "mcp") {
+      mcpProvider.refresh();
     }
   };
   const refreshAllViews = () => refreshViews();
@@ -151,6 +158,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidSaveTextDocument((document) => {
       if (isStarlingModelProfilePath(document.uri.fsPath)) {
         refreshViews("models");
+      }
+      if (isStarlingMcpConfigPath(document.uri.fsPath)) {
+        refreshViews("mcp");
       }
     })
   );
@@ -508,6 +518,35 @@ export function activate(context: vscode.ExtensionContext): void {
         refreshAllViews();
       } catch (err) {
         await showCommandError("Delete model profile", err);
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("starling.mcpList", async () => {
+      await runCliCommandOutput("Starling: mcp list", () => cli.mcpListText());
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("starling.mcpOpenConfig", async () => {
+      try {
+        await openMcpConfig();
+      } catch (err) {
+        await showCommandError("Open MCP config", err);
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("starling.mcpCopyName", async (node: unknown) => {
+      const name = extractMcpServerName(node);
+      if (!name) return;
+      try {
+        await vscode.env.clipboard.writeText(name);
+        vscode.window.showInformationMessage(`Copied MCP server name: ${name}`);
+      } catch (err) {
+        await showCommandError("Copy MCP server name", err);
       }
     })
   );
@@ -1218,6 +1257,17 @@ async function openModelSettings(model: cli.ModelConfigSummary): Promise<void> {
   await vscode.window.showTextDocument(document, { preview: false });
 }
 
+async function openMcpConfig(): Promise<void> {
+  const configPath = await cli.mcpConfigPathFromCli();
+  const uri = vscode.Uri.file(configPath);
+  if (!(await fileExists(uri))) {
+    await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(configPath)));
+    await vscode.workspace.fs.writeFile(uri, Buffer.from('{\n  "mcpServers": {}\n}\n', "utf-8"));
+  }
+  const document = await vscode.workspace.openTextDocument(uri);
+  await vscode.window.showTextDocument(document, { preview: false });
+}
+
 async function deleteModelProfile(model: cli.ModelConfigSummary): Promise<void> {
   if (model.scope !== "profile") {
     throw new Error("Only Starling model profiles can be deleted. Default/current model settings are not deleted from the extension.");
@@ -1611,6 +1661,10 @@ function isStarlingModelProfilePath(filePath: string): boolean {
   const normalized = filePath.replace(/\\/g, "/");
   const settingsRoot = path.join(cli.starlingHomeRoot(), "settings").replace(/\\/g, "/");
   return normalized.startsWith(`${settingsRoot}/claude/`) || normalized.startsWith(`${settingsRoot}/codex/`);
+}
+
+function isStarlingMcpConfigPath(filePath: string): boolean {
+  return path.resolve(filePath) === path.resolve(cli.mcpConfigPath());
 }
 
 function errorMessage(err: unknown): string {
