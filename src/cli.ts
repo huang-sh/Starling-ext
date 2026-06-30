@@ -621,6 +621,10 @@ function normalizeLiveStatus(value: unknown): LiveStatus {
 }
 
 function isActiveMonitorRow(row: MonitorRow): boolean {
+  return isActiveMonitorRowStatus(row);
+}
+
+export function isActiveMonitorRowStatus(row: Pick<MonitorRow, "pid" | "status">): boolean {
   return row.pid !== undefined;
 }
 

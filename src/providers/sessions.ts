@@ -436,7 +436,7 @@ function uniqueMonitorRows(rows: cli.MonitorRow[]): cli.MonitorRow[] {
 }
 
 function isActiveMonitorRow(row: cli.MonitorRow): boolean {
-  return row.pid !== undefined;
+  return cli.isActiveMonitorRowStatus(row);
 }
 
 function sortMonitorRows(rows: cli.MonitorRow[]): cli.MonitorRow[] {
