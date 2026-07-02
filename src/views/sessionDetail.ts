@@ -57,10 +57,10 @@ export class SessionDetailPanel {
       // fails, the panel still renders with static data only.
       const [meta, snap] = await Promise.all([
         cli.getSession(sessionId),
-        cli.getMonitorSnapshot({ recent: true }).catch(() => null),
+        cli.getMonitorSnapshot().catch(() => null),
       ]);
       const live = snap
-        ? [...snap.pinned, ...snap.recent].find(
+        ? monitorRows(snap).find(
             (r) => r.session_id === sessionId || r.canonical_session_id === sessionId
           )
         : undefined;
@@ -214,6 +214,13 @@ export class SessionDetailPanel {
     } else if (live.last_tool) {
       rows.push(["Last tool", escapeHtml(`${live.last_tool} × ${live.tool_count}`)]);
     }
+    if (live.skill_count > 0) {
+      rows.push(["Skill calls", escapeHtml(String(live.skill_count))]);
+      const usage = formatSkillUsage(live);
+      if (usage !== "-") {
+        rows.push(["Skill usage", escapeHtml(usage)]);
+      }
+    }
     if (live.compaction_count > 0) {
       rows.push(["Compaction", escapeHtml(`${live.compaction_count} event${live.compaction_count === 1 ? "" : "s"}`)]);
     }
@@ -253,6 +260,19 @@ function escapeHtml(s: string): string {
 function formatCatalogs(catalogs?: Array<{ id: string; name: string }>): string {
   if (!catalogs || catalogs.length === 0) return "-";
   return catalogs.map((catalog) => `${catalog.name} (${catalog.id})`).join(", ");
+}
+
+function formatSkillUsage(live: cli.MonitorRow): string {
+  const usage = (live.skill_usage ?? [])
+    .filter((entry) => entry.name && entry.count > 0)
+    .slice(0, 6)
+    .map((entry) => `${entry.name}×${entry.count}`);
+  if (usage.length > 0) return usage.join(", ");
+  return live.last_skill ? `${live.last_skill}×${live.skill_count}` : "-";
+}
+
+function monitorRows(snapshot: cli.MonitorSnapshot): cli.MonitorRow[] {
+  return snapshot.rows ?? [...snapshot.pinned, ...snapshot.recent];
 }
 
 /**

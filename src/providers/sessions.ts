@@ -13,6 +13,8 @@ import {
 } from "../sessionDisplay";
 import { clearProblem, logError, reportProblem } from "../logging";
 import { iconForStatus, LiveStatusStore, statusColor } from "./liveStatus";
+import { getConfiguredMonitorAgentMode, monitorAgentLabel } from "../monitorAgent";
+import { getConfiguredMonitorSort, monitorSortLabel } from "../monitorSort";
 
 // --- Tree item types ---
 
@@ -31,10 +33,12 @@ type MonitorGroupKind = "attention" | "active" | "pinned" | "recent" | "static";
 class MonitorSummaryNode extends vscode.TreeItem {
   constructor(snapshot: cli.MonitorSnapshot) {
     super("Starling monitor", vscode.TreeItemCollapsibleState.None);
-    const rows = [...snapshot.pinned, ...snapshot.recent];
+    const rows = monitorRows(snapshot);
     const summary = summarizeMonitorRows(rows);
-    this.description = `${snapshot.pinned_total} pinned  ·  ${snapshot.active} active`;
-    this.tooltip = summary.tooltip;
+    const agent = getConfiguredMonitorAgentMode();
+    const sort = getConfiguredMonitorSort();
+    this.description = `${snapshot.pinned_total} pinned  ·  ${snapshot.active} active  ·  agent ${agent}  ·  sort ${sort}`;
+    this.tooltip = `${summary.tooltip} · Agent: ${monitorAgentLabel(agent)} · Sort: ${monitorSortLabel(sort)}`;
     this.iconPath = summary.attention > 0
       ? new vscode.ThemeIcon("warning", statusColor("waiting"))
       : summary.active > 0
@@ -78,6 +82,7 @@ class MonitorSessionNode extends vscode.TreeItem {
       monitor.model || "",
       ctx !== "-" ? `ctx ${ctx}` : "",
       tokens !== "0/0/0" ? `tok ${tokens}` : "",
+      monitor.skill_count > 0 ? `skills ${monitor.skill_count}` : "",
       monitor.current_task ? truncate(monitor.current_task, 42) : "",
     ].filter(Boolean);
     this.description = parts.join("  ·  ");
@@ -190,6 +195,13 @@ function buildSessionTooltip(
     } else if (monitor.last_tool) {
       lines.push(`**Last tool:** ${monitor.last_tool}×${monitor.tool_count}`);
     }
+    if (monitor.skill_count > 0) {
+      lines.push(`**Skill calls:** ${monitor.skill_count}`);
+      const usage = formatSkillUsage(monitor);
+      if (usage !== "-") {
+        lines.push(`**Skill usage:** ${usage}`);
+      }
+    }
     if (monitor.compaction_count > 0) {
       lines.push(`**Compaction events:** ${monitor.compaction_count}`);
     }
@@ -234,6 +246,13 @@ function buildMonitorTooltip(monitor: cli.MonitorRow): vscode.MarkdownString {
   }
   if (monitor.last_tool) {
     lines.push(`**Last tool:** ${monitor.last_tool} x${monitor.tool_count}`);
+  }
+  if (monitor.skill_count > 0) {
+    lines.push(`**Skill calls:** ${monitor.skill_count}`);
+    const usage = formatSkillUsage(monitor);
+    if (usage !== "-") {
+      lines.push(`**Skill usage:** ${usage}`);
+    }
   }
   if (monitor.compaction_count > 0) {
     lines.push(`**Compaction events:** ${monitor.compaction_count}`);
@@ -369,19 +388,21 @@ export class SessionsProvider implements vscode.TreeDataProvider<TreeNode> {
   }
 
   private buildMonitorRoot(snapshot: cli.MonitorSnapshot): TreeNode[] {
-    const rows = uniqueMonitorRows([...snapshot.pinned, ...snapshot.recent]);
+    const rows = uniqueMonitorRows(monitorRows(snapshot));
     const attention = rows.filter((row) => row.status === "waiting");
     const active = rows.filter(isActiveMonitorRow);
+    const pinned = rows.filter((row) => row.pinned);
+    const recent = rows.filter((row) => !row.pinned);
     const nodes: TreeNode[] = [new MonitorSummaryNode(snapshot)];
     if (attention.length > 0) {
-      nodes.push(new MonitorGroupNode("attention", sortMonitorRows(attention), "Needs attention"));
+      nodes.push(new MonitorGroupNode("attention", attention, "Needs attention"));
     }
     if (active.length > 0) {
-      nodes.push(new MonitorGroupNode("active", sortMonitorRows(active), "Active sessions"));
+      nodes.push(new MonitorGroupNode("active", active, "Active sessions"));
     }
-    nodes.push(new MonitorGroupNode("pinned", sortMonitorRows(snapshot.pinned), "Pinned monitor", vscode.TreeItemCollapsibleState.Expanded));
-    if (snapshot.recent.length > 0) {
-      nodes.push(new MonitorGroupNode("recent", sortMonitorRows(snapshot.recent), "Recent monitor", vscode.TreeItemCollapsibleState.Collapsed));
+    nodes.push(new MonitorGroupNode("pinned", pinned, "Pinned monitor", vscode.TreeItemCollapsibleState.Expanded));
+    if (recent.length > 0) {
+      nodes.push(new MonitorGroupNode("recent", recent, "Recent monitor", vscode.TreeItemCollapsibleState.Collapsed));
     }
     nodes.push(new MonitorGroupNode("static", [], "Static sessions", vscode.TreeItemCollapsibleState.Collapsed));
     return nodes;
@@ -435,26 +456,21 @@ function uniqueMonitorRows(rows: cli.MonitorRow[]): cli.MonitorRow[] {
   return unique;
 }
 
+function monitorRows(snapshot: cli.MonitorSnapshot): cli.MonitorRow[] {
+  return snapshot.rows ?? [...snapshot.pinned, ...snapshot.recent];
+}
+
 function isActiveMonitorRow(row: cli.MonitorRow): boolean {
   return cli.isActiveMonitorRowStatus(row);
 }
 
-function sortMonitorRows(rows: cli.MonitorRow[]): cli.MonitorRow[] {
-  const rank: Record<cli.LiveStatus, number> = {
-    running: 0,
-    stale_running: 1,
-    waiting: 2,
-    failure: 3,
-    aborted: 4,
-    idle: 5,
-    stopped: 6,
-    unknown: 7,
-  };
-  return [...rows].sort((a, b) => {
-    const statusDiff = (rank[a.status] ?? 9) - (rank[b.status] ?? 9);
-    if (statusDiff !== 0) return statusDiff;
-    return (b.last_activity_ms || 0) - (a.last_activity_ms || 0);
-  });
+function formatSkillUsage(monitor: cli.MonitorRow): string {
+  const usage = monitor.skill_usage
+    .filter((entry) => entry.name && entry.count > 0)
+    .slice(0, 4)
+    .map((entry) => `${entry.name}×${entry.count}`);
+  if (usage.length > 0) return usage.join(", ");
+  return monitor.last_skill ? `${monitor.last_skill}×${monitor.skill_count}` : "-";
 }
 
 function truncate(value: string, max: number): string {

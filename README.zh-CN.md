@@ -12,16 +12,16 @@ Starling Agent 是 Claude Code 与 Codex 会话的 VS Code 监控与工作台，
 
 它配合 Starling CLI 使用，把本地 agent 历史整理成四个侧边栏视图：Monitor、Catalog、Projects、Models。
 
-当前版本：**0.1.6**
+当前版本：**0.1.8**
 
 - VS Code Marketplace：[`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
-- GitHub Release：[`v0.1.6`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.6)
+- GitHub Release：[`v0.1.8`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.8)
 - CLI 包：[`starling-ai`](https://www.npmjs.com/package/starling-ai)
 
 GitHub Release 会附带打包好的 VSIX：
 
 ```text
-starling-ai-0.1.6.vsix
+starling-ai-0.1.8.vsix
 ```
 
 ## 安装要求
@@ -113,9 +113,11 @@ Monitor 视图由 `starling top --json` 提供数据，并在后台刷新。它�
 
 - Needs attention：等待用户输入或确认的会话。
 - Active sessions：正在运行或等待的会话。
-- Pinned monitor：已 pin 的会话，按实时状态排序。
-- Recent monitor：最近的未 pin 会话。
+- Pinned monitor：已 pin 的会话，按当前 Monitor 排序显示。
+- Recent monitor：最近的未 pin 会话，按当前 Monitor 排序显示。
 - Static sessions：实时数据不可用时的静态 session 列表。
+
+可以通过 `Starling: Set Monitor Sort` 或 Monitor 视图标题栏按钮切换排序：activity、recent、tokens、created、memory、cpu、ctx、skills、tools。也可以通过 `Starling: Set Monitor Agent Filter` 只显示全部、Claude 或 Codex 会话。
 
 会话状态使用 VS Code 主题图标和颜色显示：
 
@@ -145,6 +147,8 @@ Monitor 视图由 `starling top --json` 提供数据，并在后台刷新。它�
 常用命令：
 
 - `Starling: Refresh`
+- `Starling: Set Monitor Agent Filter`
+- `Starling: Set Monitor Sort`
 - `Starling: Resume Session`
 - `Starling: Show Session Details`
 - `Starling: Pin Session`
@@ -176,6 +180,8 @@ Monitor 视图由 `starling top --json` 提供数据，并在后台刷新。它�
   "starling.cacheTtlSeconds": 30,
   "starling.monitorRefreshSeconds": 3,
   "starling.monitorCacheTtlSeconds": 2,
+  "starling.monitorSort": "activity",
+  "starling.monitorAgent": "all",
   "starling.projectSessionLimit": 30,
   "starling.sessionTreeLimit": 50
 }
@@ -200,6 +206,14 @@ CLI 查询结果缓存时间。设置为 `0` 可以关闭缓存。
 ### `starling.monitorCacheTtlSeconds`
 
 实时 monitor 快照缓存时间。刷新失败时，扩展会保留最近一次有效数据，避免临时 CLI 错误把视图清空。
+
+### `starling.monitorSort`
+
+Monitor 视图排序方式。支持 `activity`、`recent`、`tokens`、`created`、`memory`、`cpu`、`ctx`、`skills`、`tools`。
+
+### `starling.monitorAgent`
+
+Monitor 视图 Agent 过滤方式。支持 `all`、`claude`、`codex`。
 
 ### `starling.projectSessionLimit`
 

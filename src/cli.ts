@@ -190,6 +190,22 @@ export interface MonitorChatMessage {
   text: string;
 }
 
+export interface MonitorSkillUsage {
+  name: string;
+  path: string;
+  count: number;
+  explicit: number;
+  implicit: number;
+  last_used_ms: number;
+}
+
+export interface MonitorSkillCall {
+  name: string;
+  path: string;
+  kind: string;
+  timestamp_ms: number;
+}
+
 /**
  * Live per-session metrics from `starling top --json`. Mirrors the CLI's
  * MonitorRow shape (Starling/src/commands/monitor.ts).
@@ -213,6 +229,8 @@ export interface MonitorRow {
   tokens_cache: number;
   last_tool: string | null;
   tool_count: number;
+  last_skill: string | null;
+  skill_count: number;
   project_path: string;
   file_path?: string;
   last_activity_ms: number;
@@ -226,6 +244,8 @@ export interface MonitorRow {
   compaction_count: number;
   current_task: string;
   tool_calls_tail: MonitorToolCall[];
+  skill_usage: MonitorSkillUsage[];
+  skill_calls_tail: MonitorSkillCall[];
   chat_tail: MonitorChatMessage[];
 }
 
@@ -233,6 +253,8 @@ export interface MonitorSnapshot {
   pinned_total: number;
   recent_total: number;
   active: number;
+  rows?: MonitorRow[];
+  rows_ordered?: boolean;
   pinned: MonitorRow[];
   recent: MonitorRow[];
 }
@@ -550,6 +572,8 @@ function normalizeMonitorSnapshot(raw: unknown): MonitorSnapshot {
       pinned_total: pinned.length,
       recent_total: recent.length,
       active: rows.filter(isActiveMonitorRow).length,
+      rows,
+      rows_ordered: false,
       pinned,
       recent,
     };
@@ -558,10 +582,14 @@ function normalizeMonitorSnapshot(raw: unknown): MonitorSnapshot {
   const obj = (raw && typeof raw === "object" ? raw : {}) as Partial<MonitorSnapshot>;
   const pinned = Array.isArray(obj.pinned) ? obj.pinned.map((row) => normalizeMonitorRow(row)) : [];
   const recent = Array.isArray(obj.recent) ? obj.recent.map((row) => normalizeMonitorRow(row)) : [];
+  const rawRows = Array.isArray(obj.rows) ? obj.rows.map((row) => normalizeMonitorRow(row)) : undefined;
+  const rows = rawRows ?? [...pinned, ...recent];
   return {
     pinned_total: Number.isFinite(obj.pinned_total) ? Number(obj.pinned_total) : pinned.length,
     recent_total: Number.isFinite(obj.recent_total) ? Number(obj.recent_total) : recent.length,
-    active: [...pinned, ...recent].filter(isActiveMonitorRow).length,
+    active: Number.isFinite(obj.active) ? Number(obj.active) : rows.filter(isActiveMonitorRow).length,
+    rows,
+    rows_ordered: Boolean(rawRows),
     pinned,
     recent,
   };
@@ -590,6 +618,8 @@ function normalizeMonitorRow(raw: unknown): MonitorRow {
     tokens_cache: toNumber(row.tokens_cache, 0),
     last_tool: typeof row.last_tool === "string" && row.last_tool ? row.last_tool : null,
     tool_count: toNumber(row.tool_count, 0),
+    last_skill: typeof row.last_skill === "string" && row.last_skill ? row.last_skill : null,
+    skill_count: toNumber(row.skill_count, 0),
     project_path: String(row.project_path ?? row.project ?? ""),
     file_path: typeof row.file_path === "string" ? row.file_path : undefined,
     last_activity_ms: toNumber(row.last_activity_ms, 0),
@@ -602,6 +632,8 @@ function normalizeMonitorRow(raw: unknown): MonitorRow {
     compaction_count: toNumber(row.compaction_count, 0),
     current_task: String(row.current_task ?? ""),
     tool_calls_tail: Array.isArray(row.tool_calls_tail) ? row.tool_calls_tail.map(normalizeMonitorToolCall) : [],
+    skill_usage: Array.isArray(row.skill_usage) ? row.skill_usage.map(normalizeMonitorSkillUsage) : [],
+    skill_calls_tail: Array.isArray(row.skill_calls_tail) ? row.skill_calls_tail.map(normalizeMonitorSkillCall) : [],
     chat_tail: Array.isArray(row.chat_tail) ? row.chat_tail.map(normalizeMonitorChatMessage) : [],
   };
 }
@@ -637,6 +669,28 @@ function normalizeMonitorToolCall(raw: unknown): MonitorToolCall {
   };
 }
 
+function normalizeMonitorSkillUsage(raw: unknown): MonitorSkillUsage {
+  const row = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return {
+    name: String(row.name ?? ""),
+    path: String(row.path ?? ""),
+    count: toNumber(row.count, 0),
+    explicit: toNumber(row.explicit, 0),
+    implicit: toNumber(row.implicit, 0),
+    last_used_ms: toNumber(row.last_used_ms, 0),
+  };
+}
+
+function normalizeMonitorSkillCall(raw: unknown): MonitorSkillCall {
+  const row = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return {
+    name: String(row.name ?? ""),
+    path: String(row.path ?? ""),
+    kind: String(row.kind ?? ""),
+    timestamp_ms: toNumber(row.timestamp_ms, 0),
+  };
+}
+
 function normalizeMonitorChatMessage(raw: unknown): MonitorChatMessage {
   const row = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const role = row.role === "assistant" ? "assistant" : "user";
@@ -656,10 +710,13 @@ function toNumber(value: unknown, fallback: number): number {
  * hammer the CLI or blank the UI during transient command failures.
  */
 export async function getMonitorSnapshot(
-  opts: { recent?: boolean; force?: boolean; allowStale?: boolean } = {}
+  opts: { pinned?: boolean; recent?: boolean; sort?: string; agent?: string; force?: boolean; allowStale?: boolean } = {}
 ): Promise<MonitorSnapshot> {
   const args = ["top", "--json"];
+  if (opts.pinned) args.push("--pinned");
   if (opts.recent) args.push("--recent");
+  if (opts.sort) args.push("--sort", opts.sort);
+  if (opts.agent) args.push("--agent", opts.agent);
   const cacheKey = `monitor:${cacheKeyForCommand(args)}`;
   const cached = monitorCache.get(cacheKey);
   const now = Date.now();

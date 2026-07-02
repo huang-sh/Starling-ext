@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import * as cli from "../cli";
 import { clearProblem, logError, reportProblem } from "../logging";
+import { getConfiguredMonitorAgentFilter } from "../monitorAgent";
+import { getConfiguredMonitorSort } from "../monitorSort";
 
 const DEFAULT_MONITOR_REFRESH_MS = 3000;
 
@@ -48,7 +50,7 @@ export function statusColor(status: cli.LiveStatus): vscode.ThemeColor {
 
 export function monitorMapFromSnapshot(snapshot: cli.MonitorSnapshot): Map<string, cli.MonitorRow> {
   const next = new Map<string, cli.MonitorRow>();
-  for (const row of [...snapshot.pinned, ...snapshot.recent]) {
+  for (const row of monitorRows(snapshot)) {
     if (!row.session_id) continue;
     next.set(row.session_id, row);
     if (row.canonical_session_id) {
@@ -74,6 +76,7 @@ export class LiveStatusStore implements vscode.Disposable {
   private snapshot?: cli.MonitorSnapshot;
   private monitorBySid = new Map<string, cli.MonitorRow>();
   private inFlight: Promise<cli.MonitorSnapshot | undefined> | undefined;
+  private requestSerial = 0;
   private timer: NodeJS.Timeout | undefined;
   private disposed = false;
 
@@ -86,7 +89,7 @@ export class LiveStatusStore implements vscode.Disposable {
   }
 
   getRows(): cli.MonitorRow[] {
-    return this.snapshot ? [...this.snapshot.pinned, ...this.snapshot.recent] : [];
+    return this.snapshot ? monitorRows(this.snapshot) : [];
   }
 
   startBackgroundMonitoring(): vscode.Disposable {
@@ -106,16 +109,20 @@ export class LiveStatusStore implements vscode.Disposable {
   }
 
   async refresh(opts: { force: boolean }): Promise<cli.MonitorSnapshot | undefined> {
-    if (this.inFlight) return this.inFlight;
+    if (this.inFlight && !opts.force) return this.inFlight;
+    const serial = ++this.requestSerial;
     const request = (async () => {
       try {
         const next = await cli.getMonitorSnapshot({
-          recent: true,
           force: opts.force,
           allowStale: true,
+          agent: getConfiguredMonitorAgentFilter(),
+          sort: getConfiguredMonitorSort(),
         });
         clearProblem("monitor");
-        this.replaceSnapshot(next);
+        if (serial === this.requestSerial) {
+          this.replaceSnapshot(next);
+        }
         return next;
       } catch (err) {
         const message = `Monitor refresh failed: ${errorMessage(err)}`;
@@ -123,7 +130,9 @@ export class LiveStatusStore implements vscode.Disposable {
         reportProblem("monitor", message, vscode.DiagnosticSeverity.Warning);
         return this.snapshot;
       } finally {
-        this.inFlight = undefined;
+        if (serial === this.requestSerial) {
+          this.inFlight = undefined;
+        }
       }
     })();
     this.inFlight = request;
@@ -155,6 +164,10 @@ export class LiveStatusStore implements vscode.Disposable {
   }
 }
 
+function monitorRows(snapshot: cli.MonitorSnapshot): cli.MonitorRow[] {
+  return snapshot.rows ?? [...snapshot.pinned, ...snapshot.recent];
+}
+
 function getMonitorRefreshMs(): number {
   const configured = vscode.workspace.getConfiguration("starling").get<number>("monitorRefreshSeconds", 5);
   const normalized = Number(configured);
@@ -170,6 +183,7 @@ function monitorSnapshotsEqual(a: cli.MonitorSnapshot, b: cli.MonitorSnapshot): 
   ) {
     return false;
   }
+  if (monitorRowOrder(a) !== monitorRowOrder(b)) return false;
   return monitorMapsEqual(monitorMapFromSnapshot(a), monitorMapFromSnapshot(b));
 }
 
@@ -182,6 +196,12 @@ function monitorStatusSnapshotsEqual(a: cli.MonitorSnapshot, b: cli.MonitorSnaps
     if (!other || row.status !== other.status || row.pid !== other.pid) return false;
   }
   return true;
+}
+
+function monitorRowOrder(snapshot: cli.MonitorSnapshot): string {
+  return monitorRows(snapshot)
+    .map((row) => row.canonical_session_id || row.session_id)
+    .join("\0");
 }
 
 function errorMessage(err: unknown): string {
@@ -202,9 +222,11 @@ function monitorMapsEqual(
       row.pid !== other.pid ||
       row.ctx_pct !== other.ctx_pct ||
       row.last_tool !== other.last_tool ||
+      row.last_skill !== other.last_skill ||
       row.tokens_in !== other.tokens_in ||
       row.tokens_out !== other.tokens_out ||
       row.tokens_cache !== other.tokens_cache ||
+      row.skill_count !== other.skill_count ||
       row.current_task !== other.current_task ||
       row.started_at_ms !== other.started_at_ms ||
       row.compaction_count !== other.compaction_count ||

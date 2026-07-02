@@ -12,16 +12,16 @@ VS Code monitor and workspace for Claude Code and Codex sessions: live status, c
 
 It works with the Starling CLI and turns local agent history into four focused sidebar views: Monitor, Catalog, Projects, and Models.
 
-Current release: **0.1.6**
+Current release: **0.1.8**
 
 - VS Code Marketplace: [`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
-- GitHub Release: [`v0.1.6`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.6)
+- GitHub Release: [`v0.1.8`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.8)
 - CLI package: [`starling-ai`](https://www.npmjs.com/package/starling-ai)
 
 The GitHub release includes the packaged VSIX:
 
 ```text
-starling-ai-0.1.6.vsix
+starling-ai-0.1.8.vsix
 ```
 
 ## Requirements
@@ -111,9 +111,11 @@ The Monitor view is backed by `starling top --json` and refreshes in the backgro
 
 - Needs attention: sessions waiting for user input or approval.
 - Active sessions: sessions currently running or waiting.
-- Pinned monitor: pinned sessions, sorted by live state.
-- Recent monitor: optional recent unpinned sessions.
+- Pinned monitor: pinned sessions in the configured Monitor sort order.
+- Recent monitor: recent unpinned sessions in the configured Monitor sort order.
 - Static sessions: fallback session list if live monitor data is temporarily unavailable.
+
+Use `Starling: Set Monitor Sort` or the Monitor view title button to sort by activity, recent activity, tokens, creation time, memory, CPU, context, skills, or tools. Use `Starling: Set Monitor Agent Filter` to show all agents, only Claude, or only Codex.
 
 Session states are shown with colored VS Code theme icons:
 
@@ -143,6 +145,8 @@ Open the Command Palette and search for `Starling`.
 Common commands:
 
 - `Starling: Refresh`
+- `Starling: Set Monitor Agent Filter`
+- `Starling: Set Monitor Sort`
 - `Starling: Resume Session`
 - `Starling: Show Session Details`
 - `Starling: Pin Session`
@@ -174,6 +178,8 @@ Common commands:
   "starling.cacheTtlSeconds": 30,
   "starling.monitorRefreshSeconds": 3,
   "starling.monitorCacheTtlSeconds": 2,
+  "starling.monitorSort": "activity",
+  "starling.monitorAgent": "all",
   "starling.projectSessionLimit": 30,
   "starling.sessionTreeLimit": 50
 }
@@ -198,6 +204,14 @@ How often the extension refreshes live session status in the background. The def
 ### `starling.monitorCacheTtlSeconds`
 
 How long live monitor snapshots are cached. The extension keeps the last good snapshot when a refresh fails, so transient CLI errors do not blank the Monitor view.
+
+### `starling.monitorSort`
+
+Sort mode used for the Monitor view. Supported values are `activity`, `recent`, `tokens`, `created`, `memory`, `cpu`, `ctx`, `skills`, and `tools`.
+
+### `starling.monitorAgent`
+
+Agent filter used for the Monitor view. Supported values are `all`, `claude`, and `codex`.
 
 ### `starling.projectSessionLimit`
 

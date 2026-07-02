@@ -19,6 +19,8 @@ import {
   logInfo,
   reportProblem,
 } from "./logging";
+import { getConfiguredMonitorAgentMode, monitorAgentLabel, MONITOR_AGENT_MODES, type MonitorAgentMode } from "./monitorAgent";
+import { getConfiguredMonitorSort, monitorSortLabel, MONITOR_SORT_MODES, type MonitorSort } from "./monitorSort";
 
 let starlingInstallPromptVisible = false;
 
@@ -151,6 +153,52 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("starling.refresh", refreshHandler)
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand("starling.setMonitorSort", async () => {
+      const current = getConfiguredMonitorSort();
+      const selected = await vscode.window.showQuickPick(
+        MONITOR_SORT_MODES.map((mode) => ({
+          label: mode.label,
+          description: mode.value === current ? "current" : mode.value,
+          detail: mode.description,
+          value: mode.value,
+        })),
+        { placeHolder: "Sort Monitor sessions" }
+      );
+      if (!selected) return;
+
+      await vscode.workspace
+        .getConfiguration("starling")
+        .update("monitorSort", selected.value, vscode.ConfigurationTarget.Global);
+      await liveStatus.refresh({ force: true });
+      sessionsProvider.refresh();
+      vscode.window.showInformationMessage(`Starling Monitor sorted by ${monitorSortLabel(selected.value as MonitorSort)}.`);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("starling.setMonitorAgent", async () => {
+      const current = getConfiguredMonitorAgentMode();
+      const selected = await vscode.window.showQuickPick(
+        MONITOR_AGENT_MODES.map((mode) => ({
+          label: mode.label,
+          description: mode.value === current ? "current" : mode.value,
+          detail: mode.description,
+          value: mode.value,
+        })),
+        { placeHolder: "Filter Monitor sessions by agent" }
+      );
+      if (!selected) return;
+
+      await vscode.workspace
+        .getConfiguration("starling")
+        .update("monitorAgent", selected.value, vscode.ConfigurationTarget.Global);
+      await liveStatus.refresh({ force: true });
+      sessionsProvider.refresh();
+      vscode.window.showInformationMessage(`Starling Monitor agent filter: ${monitorAgentLabel(selected.value as MonitorAgentMode)}.`);
+    })
+  );
+
   const dataWatcher = new StarlingDataWatcher(refreshViews);
   context.subscriptions.push(dataWatcher);
 
@@ -171,6 +219,12 @@ export function activate(context: vscode.ExtensionContext): void {
         refreshViews();
         dataWatcher.rebuild();
         void checkStarlingCliOnActivation();
+      }
+      if (event.affectsConfiguration("starling.monitorSort")) {
+        void liveStatus.refresh({ force: true }).then(() => sessionsProvider.refresh());
+      }
+      if (event.affectsConfiguration("starling.monitorAgent")) {
+        void liveStatus.refresh({ force: true }).then(() => sessionsProvider.refresh());
       }
     })
   );

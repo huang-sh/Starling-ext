@@ -2,7 +2,7 @@
   "name": "starling-ai",
   "displayName": "Starling Agent",
   "description": "VS Code monitor and workspace for Claude Code and Codex sessions: live status, catalogs, projects, model profiles, resume, and fork.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "huangsh",
   "icon": "icons/starling.png",
   "license": "MIT",
@@ -25,6 +25,8 @@
     "onView:starling-mcp",
     "onView:starling-sessions",
     "onCommand:starling.refresh",
+    "onCommand:starling.setMonitorAgent",
+    "onCommand:starling.setMonitorSort",
     "onCommand:starling.resume",
     "onCommand:starling.pin",
     "onCommand:starling.pinToSpace",
@@ -115,6 +117,18 @@
         "command": "starling.refresh",
         "category": "Starling",
         "title": "Refresh"
+      },
+      {
+        "command": "starling.setMonitorSort",
+        "category": "Starling",
+        "title": "Set Monitor Sort",
+        "icon": "$(list-ordered)"
+      },
+      {
+        "command": "starling.setMonitorAgent",
+        "category": "Starling",
+        "title": "Set Monitor Agent Filter",
+        "icon": "$(filter)"
       },
       {
         "command": "starling.resume",
@@ -565,6 +579,16 @@
           "group": "navigation@1"
         },
         {
+          "command": "starling.setMonitorSort",
+          "when": "view == starling-sessions",
+          "group": "navigation@8"
+        },
+        {
+          "command": "starling.setMonitorAgent",
+          "when": "view == starling-sessions",
+          "group": "navigation@8"
+        },
+        {
           "command": "starling.refresh",
           "when": "view == starling-sessions || view == starling-spaces || view == starling-projects || view == starling-models || view == starling-mcp",
           "group": "navigation@9"
@@ -621,6 +645,48 @@
           "default": 2,
           "description": "How long live monitor snapshots are cached in seconds. The extension keeps the last good snapshot if a refresh fails.",
           "minimum": 0
+        },
+        "starling.monitorSort": {
+          "type": "string",
+          "default": "activity",
+          "enum": [
+            "activity",
+            "recent",
+            "tokens",
+            "created",
+            "memory",
+            "cpu",
+            "ctx",
+            "skills",
+            "tools"
+          ],
+          "enumDescriptions": [
+            "Status activity first, then most recent activity.",
+            "Most recent activity time first.",
+            "Highest total token usage first.",
+            "Newest session start time first.",
+            "Highest memory usage first.",
+            "Highest CPU usage first.",
+            "Highest context percentage first.",
+            "Highest skill-call count first.",
+            "Highest tool-call count first."
+          ],
+          "description": "Sort mode passed to starling top --sort for the Monitor view."
+        },
+        "starling.monitorAgent": {
+          "type": "string",
+          "default": "all",
+          "enum": [
+            "all",
+            "claude",
+            "codex"
+          ],
+          "enumDescriptions": [
+            "Show Claude and Codex sessions.",
+            "Only show Claude Code sessions.",
+            "Only show Codex sessions."
+          ],
+          "description": "Agent filter passed to starling top --agent for the Monitor view. Use all to disable filtering."
         },
         "starling.projectSessionLimit": {
           "type": "number",
