@@ -1,10 +1,11 @@
 import * as vscode from "vscode";
+import type { AgentProvider } from "./agent";
 
 export const MONITOR_AGENT_MODES = [
   {
     value: "all",
     label: "All Agents",
-    description: "Show Claude and Codex sessions",
+    description: "Show Claude, Codex, and Pi sessions",
   },
   {
     value: "claude",
@@ -16,10 +17,15 @@ export const MONITOR_AGENT_MODES = [
     label: "Codex",
     description: "Only show Codex sessions",
   },
+  {
+    value: "pi",
+    label: "Pi",
+    description: "Only show Pi sessions",
+  },
 ] as const;
 
 export type MonitorAgentMode = typeof MONITOR_AGENT_MODES[number]["value"];
-export type MonitorAgentFilter = Exclude<MonitorAgentMode, "all">;
+export type MonitorAgentFilter = AgentProvider;
 
 export const DEFAULT_MONITOR_AGENT: MonitorAgentMode = "all";
 

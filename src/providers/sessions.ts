@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as cli from "../cli";
+import { AGENT_PROVIDERS, agentIconName, normalizeAgentProvider } from "../agent";
 import {
   formatCompactTokens,
   formatCpuPct,
@@ -12,18 +13,18 @@ import {
   shortSessionId,
 } from "../sessionDisplay";
 import { clearProblem, logError, reportProblem } from "../logging";
-import { iconForStatus, LiveStatusStore, statusColor } from "./liveStatus";
+import { iconForStatus, LiveStatusStore, monitorIdentityKey, statusColor } from "./liveStatus";
 import { getConfiguredMonitorAgentMode, monitorAgentLabel } from "../monitorAgent";
 import { getConfiguredMonitorSort, monitorSortLabel } from "../monitorSort";
+import { sameSessionIdentity } from "../sessionIdentity";
 
 // --- Tree item types ---
 
 class ProviderNode extends vscode.TreeItem {
   constructor(public readonly provider: string) {
     super(provider, vscode.TreeItemCollapsibleState.Collapsed);
-    this.iconPath = new vscode.ThemeIcon(
-      provider === "claude" ? "hubot" : "server"
-    );
+    const agent = normalizeAgentProvider(provider);
+    this.iconPath = new vscode.ThemeIcon(agent ? agentIconName(agent) : "server");
     this.contextValue = "provider";
   }
 }
@@ -339,7 +340,7 @@ export class SessionsProvider implements vscode.TreeDataProvider<TreeNode> {
     }
     if (element instanceof MonitorGroupNode) {
       if (element.kind === "static") {
-        return [new ProviderNode("claude"), new ProviderNode("codex")];
+        return AGENT_PROVIDERS.map((provider) => new ProviderNode(provider));
       }
       return element.rows.map((row) => new MonitorSessionNode(row));
     }
@@ -358,9 +359,18 @@ export class SessionsProvider implements vscode.TreeDataProvider<TreeNode> {
             return [new vscode.TreeItem("No sessions found", vscode.TreeItemCollapsibleState.None)];
           }
         }
-        const pinnedIds = await this.getPinnedSessionIds();
+        const pins = await this.getPins();
         const items: TreeNode[] = sessions.map(
-          (s) => new SessionNode(s, pinnedIds.has(s.session_id), this.liveStatus.getMonitor(s.session_id))
+          (session) => new SessionNode(
+            session,
+            pins.some((pin) => sameSessionIdentity(session, pin)),
+            this.liveStatus.getMonitor(
+              session.session_id,
+              session.provider,
+              session.project_path,
+              session.file_path
+            )
+          )
         );
         if (limit > 0 && sessions.length >= limit) {
           items.push(new LoadMoreSessionsNode(element.provider));
@@ -434,12 +444,11 @@ export class SessionsProvider implements vscode.TreeDataProvider<TreeNode> {
     return existing ?? step;
   }
 
-  private async getPinnedSessionIds(): Promise<Set<string>> {
+  private async getPins(): Promise<cli.Bookmark[]> {
     try {
-      const pins = await cli.listPins();
-      return new Set(pins.map((p) => p.session_id));
+      return await cli.listPins();
     } catch {
-      return new Set();
+      return [];
     }
   }
 }
@@ -448,7 +457,7 @@ function uniqueMonitorRows(rows: cli.MonitorRow[]): cli.MonitorRow[] {
   const seen = new Set<string>();
   const unique: cli.MonitorRow[] = [];
   for (const row of rows) {
-    const key = row.canonical_session_id || row.session_id;
+    const key = monitorIdentityKey(row);
     if (!key || seen.has(key)) continue;
     seen.add(key);
     unique.push(row);

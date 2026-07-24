@@ -120,7 +120,15 @@ export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
         }
         return [
           ...children,
-          ...pins.map((p) => new PinNode(p, details, this.liveStatus.getMonitor(p.session_id))),
+          ...pins.map((pin) => new PinNode(
+            pin,
+            details,
+            this.liveStatus.getMonitor(
+              pin.session_id,
+              pin.provider,
+              pin.project_path
+            )
+          )),
         ];
       }
     } catch (err) {

@@ -4,6 +4,7 @@ import { homedir } from "os";
 import { join } from "path";
 import { promisify } from "util";
 import * as vscode from "vscode";
+import type { AgentProvider } from "./agent";
 import { logError } from "./logging";
 
 const execFileAsync = promisify(execFile);
@@ -115,7 +116,7 @@ export interface ProjectDetails extends ProjectSummary {
 }
 
 export interface ModelConfigSummary {
-  agent: "claude" | "codex";
+  agent: AgentProvider;
   scope: "current" | "profile";
   name: string;
   source: string;

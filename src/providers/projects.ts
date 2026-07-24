@@ -243,7 +243,15 @@ export class ProjectsProvider implements vscode.TreeDataProvider<TreeNode> {
           return [new vscode.TreeItem("(no sessions)", vscode.TreeItemCollapsibleState.None)];
         }
         const children: TreeNode[] = sliced.map(
-          (session) => new ProjectSessionNode(session, this.liveStatus.getMonitor(session.session_id))
+          (session) => new ProjectSessionNode(
+            session,
+            this.liveStatus.getMonitor(
+              session.session_id,
+              session.provider,
+              session.project_path,
+              session.file_path
+            )
+          )
         );
         if (effectiveLimit > 0 && sessions.length > effectiveLimit) {
           children.push(new LoadMoreProjectSessionsNode(normalizedPath));

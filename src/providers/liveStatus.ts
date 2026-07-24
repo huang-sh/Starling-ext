@@ -3,6 +3,12 @@ import * as cli from "../cli";
 import { clearProblem, logError, reportProblem } from "../logging";
 import { getConfiguredMonitorAgentFilter } from "../monitorAgent";
 import { getConfiguredMonitorSort } from "../monitorSort";
+import {
+  scopedSessionLookupKey,
+  sessionFileLookupKey,
+  sessionIdentityKey,
+  unscopedSessionLookupKey,
+} from "../sessionIdentity";
 
 const DEFAULT_MONITOR_REFRESH_MS = 3000;
 
@@ -50,21 +56,55 @@ export function statusColor(status: cli.LiveStatus): vscode.ThemeColor {
 
 export function monitorMapFromSnapshot(snapshot: cli.MonitorSnapshot): Map<string, cli.MonitorRow> {
   const next = new Map<string, cli.MonitorRow>();
+  const unscoped = new Map<string, cli.MonitorRow | undefined>();
   for (const row of monitorRows(snapshot)) {
     if (!row.session_id) continue;
-    next.set(row.session_id, row);
-    if (row.canonical_session_id) {
-      next.set(row.canonical_session_id, row);
+    if (row.file_path) {
+      next.set(sessionFileLookupKey(row.file_path), row);
     }
+    const ids = new Set([row.session_id, row.canonical_session_id].filter(Boolean));
+    for (const id of ids) {
+      next.set(scopedSessionLookupKey(row.provider, id, row.project_path), row);
+      const key = unscopedSessionLookupKey(id);
+      const existing = unscoped.get(key);
+      if (!unscoped.has(key)) {
+        unscoped.set(key, row);
+      } else if (existing && monitorIdentityKey(existing) !== monitorIdentityKey(row)) {
+        unscoped.set(key, undefined);
+      }
+    }
+  }
+  for (const [key, row] of unscoped) {
+    if (row) next.set(key, row);
   }
   return next;
 }
 
 export function monitorForSession(
   monitorBySid: Map<string, cli.MonitorRow>,
-  sessionId: string
+  sessionId: string,
+  provider?: string,
+  projectPath?: string | null,
+  filePath?: string | null
 ): cli.MonitorRow | undefined {
-  return monitorBySid.get(sessionId);
+  if (filePath) {
+    const byFile = monitorBySid.get(sessionFileLookupKey(filePath));
+    if (byFile) return byFile;
+  }
+  if (provider) {
+    const scoped = monitorBySid.get(scopedSessionLookupKey(provider, sessionId, projectPath));
+    if (scoped) return scoped;
+  }
+  return monitorBySid.get(unscopedSessionLookupKey(sessionId));
+}
+
+export function monitorIdentityKey(row: cli.MonitorRow): string {
+  return sessionIdentityKey({
+    provider: row.provider,
+    session_id: row.canonical_session_id || row.session_id,
+    project_path: row.project_path,
+    file_path: row.file_path,
+  });
 }
 
 export class LiveStatusStore implements vscode.Disposable {
@@ -84,8 +124,13 @@ export class LiveStatusStore implements vscode.Disposable {
     return this.snapshot;
   }
 
-  getMonitor(sessionId: string): cli.MonitorRow | undefined {
-    return monitorForSession(this.monitorBySid, sessionId);
+  getMonitor(
+    sessionId: string,
+    provider?: string,
+    projectPath?: string | null,
+    filePath?: string | null
+  ): cli.MonitorRow | undefined {
+    return monitorForSession(this.monitorBySid, sessionId, provider, projectPath, filePath);
   }
 
   getRows(): cli.MonitorRow[] {
@@ -200,7 +245,7 @@ function monitorStatusSnapshotsEqual(a: cli.MonitorSnapshot, b: cli.MonitorSnaps
 
 function monitorRowOrder(snapshot: cli.MonitorSnapshot): string {
   return monitorRows(snapshot)
-    .map((row) => row.canonical_session_id || row.session_id)
+    .map(monitorIdentityKey)
     .join("\0");
 }
 

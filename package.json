@@ -1,8 +1,8 @@
 {
   "name": "starling-ai",
   "displayName": "Starling Agent",
-  "description": "VS Code monitor and workspace for Claude Code and Codex sessions: live status, catalogs, projects, model profiles, resume, and fork.",
-  "version": "0.1.8",
+  "description": "VS Code monitor and workspace for Claude Code, Codex, and Pi sessions: live status, catalogs, projects, model profiles, resume, and fork.",
+  "version": "0.1.9",
   "publisher": "huangsh",
   "icon": "icons/starling.png",
   "license": "MIT",
@@ -67,6 +67,7 @@
     "onCommand:starling.catalogCopyId",
     "onCommand:starling.catalogRunClaude",
     "onCommand:starling.catalogRunCodex",
+    "onCommand:starling.catalogRunPi",
     "onCommand:starling.projectList",
     "onCommand:starling.projectShow",
     "onCommand:starling.openProject",
@@ -349,6 +350,12 @@
         "icon": "$(terminal)"
       },
       {
+        "command": "starling.catalogRunPi",
+        "category": "Starling",
+        "title": "Pi",
+        "icon": "$(rocket)"
+      },
+      {
         "command": "starling.projectList",
         "category": "Starling",
         "title": "List Projects"
@@ -602,6 +609,10 @@
         {
           "command": "starling.catalogRunCodex",
           "group": "navigation@2"
+        },
+        {
+          "command": "starling.catalogRunPi",
+          "group": "navigation@3"
         }
       ],
       "commandPalette": [
@@ -611,6 +622,10 @@
         },
         {
           "command": "starling.catalogRunCodex",
+          "when": "false"
+        },
+        {
+          "command": "starling.catalogRunPi",
           "when": "false"
         }
       ]
@@ -679,12 +694,14 @@
           "enum": [
             "all",
             "claude",
-            "codex"
+            "codex",
+            "pi"
           ],
           "enumDescriptions": [
-            "Show Claude and Codex sessions.",
+            "Show Claude, Codex, and Pi sessions.",
             "Only show Claude Code sessions.",
-            "Only show Codex sessions."
+            "Only show Codex sessions.",
+            "Only show Pi sessions."
           ],
           "description": "Agent filter passed to starling top --agent for the Monitor view. Use all to disable filtering."
         },

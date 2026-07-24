@@ -1,14 +1,15 @@
 import * as vscode from "vscode";
 import * as cli from "../cli";
+import { AGENT_PROVIDERS, agentIconName, type AgentProvider } from "../agent";
 import { mdTooltip } from "../tooltip";
 
 type TreeNode = AgentNode | ModelNode | vscode.TreeItem;
 
 class AgentNode extends vscode.TreeItem {
-  constructor(public readonly agent: "claude" | "codex", public readonly count: number) {
+  constructor(public readonly agent: AgentProvider, public readonly count: number) {
     super(agent, count > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
     this.contextValue = "model-agent";
-    this.iconPath = new vscode.ThemeIcon(agent === "claude" ? "sparkle" : "terminal");
+    this.iconPath = new vscode.ThemeIcon(agentIconName(agent));
     this.description = count > 0 ? `${count}` : "";
   }
 }
@@ -18,7 +19,7 @@ export class ModelNode extends vscode.TreeItem {
     const displayName = model.scope === "current" && model.name === "current" ? "default" : model.name;
     super(displayName, vscode.TreeItemCollapsibleState.None);
     this.contextValue = model.scope === "profile" ? "model-profile" : "model-current";
-    this.iconPath = new vscode.ThemeIcon(model.agent === "claude" ? "sparkle" : "terminal");
+    this.iconPath = new vscode.ThemeIcon(agentIconName(model.agent));
     this.description = [model.model || "-", model.provider || ""].filter(Boolean).join(" · ");
     this.tooltip = mdTooltip([
       ["Agent", model.agent],
@@ -61,12 +62,9 @@ export class ModelsProvider implements vscode.TreeDataProvider<TreeNode> {
     try {
       const models = await this.loadModels();
       if (!element) {
-        const claudeCount = models.filter((model) => model.agent === "claude").length;
-        const codexCount = models.filter((model) => model.agent === "codex").length;
-        return [
-          new AgentNode("claude", claudeCount),
-          new AgentNode("codex", codexCount),
-        ];
+        return AGENT_PROVIDERS.map((agent) =>
+          new AgentNode(agent, models.filter((model) => model.agent === agent).length)
+        );
       }
       if (element instanceof AgentNode) {
         return models

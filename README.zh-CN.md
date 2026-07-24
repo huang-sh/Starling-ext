@@ -8,20 +8,20 @@
   <img src="icons/starling.png" alt="Starling Agent logo" width="160">
 </p>
 
-Starling Agent 是 Claude Code 与 Codex 会话的 VS Code 监控与工作台，支持实时状态、Catalog、Projects、模型配置、resume 和 fork。
+Starling Agent 是 Claude Code、Codex 与 Pi 会话的 VS Code 监控与工作台，支持实时状态、Catalog、Projects、模型配置、resume 和 fork。
 
 它配合 Starling CLI 使用，把本地 agent 历史整理成四个侧边栏视图：Monitor、Catalog、Projects、Models。
 
-当前版本：**0.1.8**
+当前版本：**0.1.9**
 
 - VS Code Marketplace：[`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
-- GitHub Release：[`v0.1.8`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.8)
+- GitHub Release：[`v0.1.9`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.9)
 - CLI 包：[`starling-ai`](https://www.npmjs.com/package/starling-ai)
 
 GitHub Release 会附带打包好的 VSIX：
 
 ```text
-starling-ai-0.1.8.vsix
+starling-ai-0.1.9.vsix
 ```
 
 ## 安装要求
@@ -48,7 +48,7 @@ npm install -g starling-ai
 
 也可以通过提示直接打开 `starling.cliPath` 设置。
 
-建议使用 Starling CLI `0.1.0` 或更新版本，这样 Monitor 视图可以读取当前的 `starling top --json` 协议。
+Pi 功能需要支持 Pi 的 Starling CLI；受管的 Pi 启动和恢复还要求 Pi 0.76 或更新版本。Pi 仍是单独安装的 Agent，本扩展不会内置 Pi。
 
 ## 视图
 
@@ -87,13 +87,14 @@ npm install -g starling-ai
 
 ### Models
 
-浏览 Starling 管理的 Claude 和 Codex 模型配置。
+浏览 Starling 管理的 Claude、Codex 和 Pi 模型配置。
 
 可以在 Models 视图标题栏创建模型配置模板。扩展会创建：
 
 ```text
 ~/.starling/settings/claude/<name>.json
 ~/.starling/settings/codex/<name>.toml
+~/.starling/settings/pi/<name>.json
 ```
 
 并在 VS Code 中打开配置文件。
@@ -107,7 +108,7 @@ npm install -g starling-ai
 
 ### Monitor
 
-Monitor 是 VS Code 里的 `starling top`。它监控 pinned、active 和 recent 的 Claude Code / Codex 会话，显示状态、上下文、token、CPU、内存和当前任务。
+Monitor 是 VS Code 里的 `starling top`。它监控 pinned、active 和 recent 的 Claude Code、Codex 与 Pi 会话，显示状态、上下文、token、CPU、内存和当前任务。
 
 Monitor 视图由 `starling top --json` 提供数据，并在后台刷新。它会把会话分组为：
 
@@ -117,7 +118,9 @@ Monitor 视图由 `starling top --json` 提供数据，并在后台刷新。它�
 - Recent monitor：最近的未 pin 会话，按当前 Monitor 排序显示。
 - Static sessions：实时数据不可用时的静态 session 列表。
 
-可以通过 `Starling: Set Monitor Sort` 或 Monitor 视图标题栏按钮切换排序：activity、recent、tokens、created、memory、cpu、ctx、skills、tools。也可以通过 `Starling: Set Monitor Agent Filter` 只显示全部、Claude 或 Codex 会话。
+可以通过 `Starling: Set Monitor Sort` 或 Monitor 视图标题栏按钮切换排序：activity、recent、tokens、created、memory、cpu、ctx、skills、tools。也可以通过 `Starling: Set Monitor Agent Filter` 只显示全部、Claude、Codex 或 Pi 会话。
+
+Linux 上，Pi 启动后会从进程列表隐藏一次性 CLI 参数。通过 Starling 启动的 Pi 会携带受管身份，可以可靠映射；若从 Starling 外部启动 Pi 并使用自定义 session root，请通过 `PI_CODING_AGENT_SESSION_DIR` 或 Pi `settings.json` 持久配置该目录。
 
 会话状态使用 VS Code 主题图标和颜色显示：
 
@@ -163,6 +166,7 @@ Monitor 视图由 `starling top --json` 提供数据，并在后台刷新。它�
 - `Starling: Open Model Settings`
 - `Starling: Start Agent Session`
 - `Starling: Start Agent Session in Catalog`
+- Catalog 右键菜单：`Run Agent > Pi`
 - `Starling: Rename Catalog`
 - `Starling: Delete Catalog`
 - `Starling: Catalog Tree`
@@ -213,7 +217,7 @@ Monitor 视图排序方式。支持 `activity`、`recent`、`tokens`、`created`
 
 ### `starling.monitorAgent`
 
-Monitor 视图 Agent 过滤方式。支持 `all`、`claude`、`codex`。
+Monitor 视图 Agent 过滤方式。支持 `all`、`claude`、`codex`、`pi`。
 
 ### `starling.projectSessionLimit`
 

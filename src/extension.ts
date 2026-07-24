@@ -21,6 +21,14 @@ import {
 } from "./logging";
 import { getConfiguredMonitorAgentMode, monitorAgentLabel, MONITOR_AGENT_MODES, type MonitorAgentMode } from "./monitorAgent";
 import { getConfiguredMonitorSort, monitorSortLabel, MONITOR_SORT_MODES, type MonitorSort } from "./monitorSort";
+import {
+  AGENT_PROVIDERS,
+  agentForkArgs,
+  agentResumeArgs,
+  normalizeAgentProvider,
+  type AgentProvider,
+} from "./agent";
+import { pathsEqual, sameSessionIdentity, sessionIdMatches } from "./sessionIdentity";
 
 let starlingInstallPromptVisible = false;
 
@@ -237,7 +245,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const sessionId = await pickSessionId(node);
       if (!sessionId) return;
       try {
-        await resumeSessionInTerminal(sessionId);
+        await resumeSessionInTerminal(sessionId, node);
       } catch (err) {
         await showCommandError("Resume", err);
       }
@@ -259,7 +267,8 @@ export function activate(context: vscode.ExtensionContext): void {
       const to = await pickSpaceName("Optional: add to existing catalog");
 
       try {
-        await cli.pinSession(sessionId, {
+        const target = await resolveSessionCommandTarget(sessionId, node);
+        await cli.pinSession(target.reference, {
           title: normalizeOptionalInput(title),
           tags: normalizeOptionalInput(tags),
           to: to ?? undefined,
@@ -281,7 +290,8 @@ export function activate(context: vscode.ExtensionContext): void {
         const space = await pickSpaceName("Select a catalog");
         if (!space) return;
 
-        await cli.pinSession(sessionId, { to: space });
+        const target = await resolveSessionCommandTarget(sessionId, node);
+        await cli.pinSession(target.reference, { to: space });
         vscode.window.showInformationMessage(`Pinned session ${shortSessionId(sessionId)}… to "${space}"`);
         refreshAllViews();
       } catch (err) {
@@ -296,7 +306,9 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!sessionId) return;
 
       try {
-        await cli.unpinSession(sessionId);
+        const bookmarkId = extractBookmarkId(node)
+          || await resolveBookmarkId(sessionId, node);
+        await cli.unpinSession(bookmarkId || sessionId);
         vscode.window.showInformationMessage(`Removed pin for ${shortSessionId(sessionId)}…`);
         refreshAllViews();
       } catch (err) {
@@ -318,7 +330,8 @@ export function activate(context: vscode.ExtensionContext): void {
       if (confirmed !== "Delete Session") return;
 
       try {
-        await cli.deleteSession(sessionId);
+        const target = await resolveSessionCommandTarget(sessionId, node);
+        await cli.deleteSession(target.reference);
         vscode.window.showInformationMessage(`Deleted session ${shortSessionId(sessionId)}…`);
         refreshAllViews();
       } catch (err) {
@@ -331,7 +344,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("starling.showSession", async (node: unknown) => {
       const sessionId = await pickSessionId(node);
       if (!sessionId) return;
-      await SessionDetailPanel.createOrShow(sessionId);
+      const session = await resolveSessionForResume(sessionId, node);
+      if (!session) {
+        vscode.window.showWarningMessage(`Session not found: ${sessionId}`);
+        return;
+      }
+      await SessionDetailPanel.createOrShow(
+        session.provider === "pi" ? session.file_path : session.session_id
+      );
     })
   );
 
@@ -340,7 +360,14 @@ export function activate(context: vscode.ExtensionContext): void {
       const sessionId = await pickSessionId(node);
       if (!sessionId) return;
 
-      const currentTitle = await resolveSessionTitleForEdit(node, sessionId);
+      let target: SessionCommandTarget;
+      try {
+        target = await resolveSessionCommandTarget(sessionId, node);
+      } catch (err) {
+        await showCommandError("Edit session title", err);
+        return;
+      }
+      const currentTitle = extractSessionTitle(node) ?? target.meta.custom_title ?? "";
       const nextTitle = await vscode.window.showInputBox({
         title: `Edit session title: ${shortSessionId(sessionId)}`,
         value: currentTitle,
@@ -349,7 +376,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (nextTitle === undefined) return;
 
       try {
-        await cli.updateSessionTitle(sessionId, nextTitle.trim());
+        await cli.updateSessionTitle(target.reference, nextTitle.trim());
         vscode.window.showInformationMessage(`Updated title for ${shortSessionId(sessionId)}…`);
         refreshAllViews();
       } catch (err) {
@@ -894,6 +921,12 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand("starling.catalogRunPi", async (node: unknown) => {
+      await runAgentInCatalog(node, "pi");
+    })
+  );
+
   // Command-line parity: project
   context.subscriptions.push(
     vscode.commands.registerCommand("starling.projectList", async () => {
@@ -1084,14 +1117,12 @@ function normalizeOptionalInput(value: string | undefined | null): string | unde
   return normalized.length > 0 ? normalized : undefined;
 }
 
-function normalizeSessionProvider(value: unknown): "claude" | "codex" | undefined {
-  if (typeof value !== "string") return undefined;
-  if (value === "claude" || value === "codex") return value;
-  return undefined;
+function normalizeSessionProvider(value: unknown): AgentProvider | undefined {
+  return normalizeAgentProvider(value);
 }
 
-async function resumeSessionInTerminal(sessionId: string): Promise<void> {
-  const resolved = await resolveSessionForResume(sessionId);
+async function resumeSessionInTerminal(sessionId: string, node?: unknown): Promise<void> {
+  const resolved = await resolveSessionForResume(sessionId, node);
   if (!resolved) {
     throw new Error(
       `Session not found: ${shortSessionId(sessionId)}… (try refreshing the session list and retrying)`
@@ -1104,7 +1135,10 @@ async function resumeSessionInTerminal(sessionId: string): Promise<void> {
     cwd: meta.project_path || undefined,
     env: terminalStarlingEnv(),
   });
-  const agent = meta.provider === "codex" ? "codex" : "claude";
+  const agent = normalizeSessionProvider(meta.provider);
+  if (!agent) {
+    throw new Error(`Unsupported session provider: ${meta.provider}`);
+  }
   const setting = await resolveResumeSetting(meta, agent);
   terminal.sendText(starlingResumeCommand(meta, agent, setting));
   terminal.show();
@@ -1115,7 +1149,7 @@ async function forkSessionInTerminal(
   node: unknown,
   title?: string
 ): Promise<void> {
-  const resolved = await resolveSessionForResume(sessionId);
+  const resolved = await resolveSessionForResume(sessionId, node);
   if (!resolved) {
     throw new Error(
       `Session not found: ${shortSessionId(sessionId)}… (try refreshing the catalog and retrying)`
@@ -1123,7 +1157,10 @@ async function forkSessionInTerminal(
   }
 
   const meta = resolved;
-  const agent = meta.provider === "codex" ? "codex" : "claude";
+  const agent = normalizeSessionProvider(meta.provider);
+  if (!agent) {
+    throw new Error(`Unsupported session provider: ${meta.provider}`);
+  }
   const setting = await resolveResumeSetting(meta, agent);
   const catalog = extractCatalogName(node) || firstSessionCatalogName(meta);
   const terminal = vscode.window.createTerminal({
@@ -1135,7 +1172,7 @@ async function forkSessionInTerminal(
   terminal.show();
 }
 
-function starlingResumeCommand(meta: cli.SessionMeta, agent: "claude" | "codex", setting?: string): string {
+function starlingResumeCommand(meta: cli.SessionMeta, agent: AgentProvider, setting?: string): string {
   const args = ["run"];
   if (setting) {
     args.push("--setting", shellArg(setting));
@@ -1145,17 +1182,13 @@ function starlingResumeCommand(meta: cli.SessionMeta, agent: "claude" | "codex",
     args.push("--catalog", shellArg(catalog));
   }
   args.push(agent);
-  if (agent === "codex") {
-    args.push("resume", shellArg(meta.session_id));
-  } else {
-    args.push("--resume", shellArg(meta.session_id));
-  }
+  args.push(...agentResumeArgs(agent, meta.session_id, meta.file_path).map(shellArg));
   return `${starlingCliCommand()} ${args.join(" ")}`;
 }
 
 function starlingForkCommand(
   meta: cli.SessionMeta,
-  agent: "claude" | "codex",
+  agent: AgentProvider,
   setting?: string,
   catalog?: string,
   title?: string
@@ -1171,17 +1204,13 @@ function starlingForkCommand(
     args.push("--title", shellArg(title));
   }
   args.push(agent);
-  if (agent === "codex") {
-    args.push("fork", shellArg(meta.session_id));
-  } else {
-    args.push("--resume", shellArg(meta.session_id), "--fork-session");
-  }
+  args.push(...agentForkArgs(agent, meta.session_id, meta.file_path).map(shellArg));
   return `${starlingCliCommand()} ${args.join(" ")}`;
 }
 
 async function resolveResumeSetting(
   meta: cli.SessionMeta,
-  agent: "claude" | "codex"
+  agent: AgentProvider
 ): Promise<string | undefined> {
   const recorded = latestRunSetting(meta);
   if (recorded) return recorded;
@@ -1253,12 +1282,13 @@ async function startModelSessionInTerminal(model: cli.ModelConfigSummary, catalo
   const terminal = vscode.window.createTerminal({
     name: `starling: ${model.agent} ${model.scope === "profile" ? model.name : "default"}`,
     cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+    env: terminalStarlingEnv(),
   });
-  terminal.sendText(`starling ${args.join(" ")}`);
+  terminal.sendText(`${starlingCliCommand()} ${args.join(" ")}`);
   terminal.show();
 }
 
-async function runAgentInCatalog(node: unknown, agent: "claude" | "codex"): Promise<void> {
+async function runAgentInCatalog(node: unknown, agent: AgentProvider): Promise<void> {
   const space = await pickSpaceFromNode(node);
   if (!space) return;
 
@@ -1351,10 +1381,18 @@ function normalizedSessionLabel(sessionId: string): string {
   return shortSessionId(sessionId.trim());
 }
 
-async function resolveSessionForResume(sessionId: string): Promise<cli.SessionMeta | undefined> {
+async function resolveSessionForResume(
+  sessionId: string,
+  node?: unknown,
+): Promise<cli.SessionMeta | undefined> {
   const normalized = normalizeSessionId(sessionId);
   if (!normalized) {
     return undefined;
+  }
+
+  const direct = extractSessionMeta(node);
+  if (direct) {
+    return direct;
   }
 
   try {
@@ -1364,33 +1402,73 @@ async function resolveSessionForResume(sessionId: string): Promise<cli.SessionMe
     // keep going with fallback when "starling session show" can't resolve exact id
   }
 
-  const sessions = await cli.listSessions(500);
-  const exactMatch = sessions.find((session) =>
-    session.session_id.toLowerCase() === normalized.toLowerCase()
+  const sessions = await cli.listSessions(0, undefined, { all: true });
+  const hint = extractSessionHint(node);
+  const exactMatches = preferSessionHint(
+    sessions.filter((session) => sessionIdMatches(
+      session.provider,
+      session.session_id,
+      normalized,
+      false
+    )),
+    hint,
   );
-  if (exactMatch) return exactMatch;
-
-  const shortMatches = sessions.filter((session) =>
-    session.session_id.toLowerCase().startsWith(normalized.toLowerCase())
-  );
-  if (shortMatches.length === 1) return shortMatches[0];
-
-  if (shortMatches.length > 1) {
-    const picked = await vscode.window.showQuickPick(
-      shortMatches.map((session) => ({
-        label: `${session.session_id}`,
-        description: `${session.provider} · ${session.project_path || "(no project)"}`,
-        detail: session.first_prompt?.slice(0, 80),
-        value: session,
-      })),
-      {
-        placeHolder: "Select the session to resume",
-      }
-    );
-    return picked?.value;
+  if (exactMatches.length === 1) return exactMatches[0];
+  if (exactMatches.length > 1) {
+    return pickSessionMatch(exactMatches, "Select the session to resume");
   }
 
+  const prefixMatches = preferSessionHint(
+    sessions.filter((session) => sessionIdMatches(
+      session.provider,
+      session.session_id,
+      normalized,
+      true
+    )),
+    hint,
+  );
+  if (prefixMatches.length === 1) return prefixMatches[0];
+  if (prefixMatches.length > 1) {
+    return pickSessionMatch(prefixMatches, "Select the session to resume");
+  }
   return undefined;
+}
+
+function preferSessionHint(
+  sessions: cli.SessionMeta[],
+  hint: SessionHint | undefined,
+): cli.SessionMeta[] {
+  if (!hint || sessions.length <= 1) return sessions;
+  const sameProvider = hint.provider
+    ? sessions.filter((session) => session.provider === hint.provider)
+    : sessions;
+  const hintedFile = hint.file_path;
+  const sameFile = hintedFile
+    ? sameProvider.filter((session) => pathsEqual(session.file_path, hintedFile))
+    : [];
+  if (sameFile.length > 0) return sameFile;
+  const hintedProject = hint.project_path;
+  const sameProject = hintedProject
+    ? sameProvider.filter((session) =>
+      Boolean(session.project_path) && pathsEqual(session.project_path!, hintedProject))
+    : [];
+  return sameProject.length > 0 ? sameProject : sameProvider;
+}
+
+async function pickSessionMatch(
+  sessions: cli.SessionMeta[],
+  placeHolder: string,
+): Promise<cli.SessionMeta | undefined> {
+  const picked = await vscode.window.showQuickPick(
+    sessions.map((session) => ({
+      label: `${session.session_id}`,
+      description: `${session.provider} · ${session.project_path || "(no project)"}`,
+      detail: session.first_prompt?.slice(0, 80),
+      value: session,
+    })),
+    { placeHolder },
+  );
+  return picked?.value;
 }
 
 function normalizeSessionId(sessionId: string): string {
@@ -1403,18 +1481,6 @@ async function pickSessionId(node: unknown): Promise<string | undefined> {
 
   const selected = await pickSession();
   return selected?.session_id;
-}
-
-async function resolveSessionTitleForEdit(node: unknown, sessionId: string): Promise<string> {
-  const direct = extractSessionTitle(node);
-  if (direct !== undefined) return direct;
-
-  try {
-    const session = await cli.getSession(sessionId);
-    return session.custom_title || "";
-  } catch {
-    return "";
-  }
 }
 
 async function pickSpace(): Promise<cli.Space | undefined> {
@@ -1501,7 +1567,7 @@ function catalogPath(space: cli.Space, spaces: cli.Space[]): string {
   return parts.join("/");
 }
 
-async function pickSession(provider?: "claude" | "codex"): Promise<cli.SessionMeta | undefined> {
+async function pickSession(provider?: AgentProvider): Promise<cli.SessionMeta | undefined> {
   const sessions = await cli.listSessions(200, provider);
   if (sessions.length === 0) {
     vscode.window.showInformationMessage("No sessions found.");
@@ -1545,15 +1611,14 @@ async function pickPinFrom(pins: cli.Bookmark[], placeHolder: string): Promise<c
   return selected?.value;
 }
 
-async function pickAgent(placeHolder = "Filter by agent"): Promise<"claude" | "codex" | undefined> {
+async function pickAgent(placeHolder = "Filter by agent"): Promise<AgentProvider | undefined> {
   type AgentPick = {
     label: string;
-    value: "claude" | "codex" | undefined;
+    value: AgentProvider | undefined;
   };
   const selected = await vscode.window.showQuickPick(
     [
-      { label: "claude", value: "claude" as const },
-      { label: "codex", value: "codex" as const },
+      ...AGENT_PROVIDERS.map((agent) => ({ label: agent, value: agent })),
       { label: "all", value: undefined },
     ] as AgentPick[],
     { placeHolder }
@@ -1561,13 +1626,13 @@ async function pickAgent(placeHolder = "Filter by agent"): Promise<"claude" | "c
   return selected?.value;
 }
 
-async function collectAndAddModelProfile(): Promise<{ agent: "claude" | "codex"; name: string } | undefined> {
+async function collectAndAddModelProfile(): Promise<{ agent: AgentProvider; name: string } | undefined> {
   const agent = await pickRequiredAgent("Model agent");
   if (!agent) return undefined;
 
   const name = normalizeOptionalInput(await vscode.window.showInputBox({
     title: "Profile name",
-    prompt: "Claude uses JSON; Codex uses TOML under ~/.starling/settings/<agent>/",
+    prompt: "Claude and Pi use JSON; Codex uses TOML under ~/.starling/settings/<agent>/",
     validateInput: (value) => {
       const trimmed = value.trim();
       if (!trimmed) return "Profile name is required";
@@ -1591,15 +1656,14 @@ async function collectAndAddModelProfile(): Promise<{ agent: "claude" | "codex";
   return { agent, name };
 }
 
-async function pickRequiredAgent(placeHolder: string): Promise<"claude" | "codex" | undefined> {
+async function pickRequiredAgent(placeHolder: string): Promise<AgentProvider | undefined> {
   type AgentPick = {
     label: string;
-    value: "claude" | "codex";
+    value: AgentProvider;
   };
   const selected = await vscode.window.showQuickPick(
     [
-      { label: "claude", value: "claude" as const },
-      { label: "codex", value: "codex" as const },
+      ...AGENT_PROVIDERS.map((agent) => ({ label: agent, value: agent })),
     ] as AgentPick[],
     { placeHolder }
   );
@@ -1637,13 +1701,13 @@ async function fileExists(uri: vscode.Uri): Promise<boolean> {
   }
 }
 
-function modelProfileTemplateText(agent: "claude" | "codex"): string {
+function modelProfileTemplateText(agent: AgentProvider): string {
   const template = modelProfileTemplate(agent);
   if (agent === "codex") return codexModelProfileTemplateToml();
   return `${JSON.stringify(template, null, 2)}\n`;
 }
 
-function modelProfileTemplate(agent: "claude" | "codex"): Record<string, unknown> {
+function modelProfileTemplate(agent: AgentProvider): Record<string, unknown> {
   if (agent === "claude") {
     return {
       env: {
@@ -1668,6 +1732,14 @@ function modelProfileTemplate(agent: "claude" | "codex"): Record<string, unknown
         ],
         defaultMode: "plan",
       },
+    };
+  }
+
+  if (agent === "pi") {
+    return {
+      provider: "",
+      model: "",
+      thinking: "medium",
     };
   }
 
@@ -1714,7 +1786,7 @@ function codexModelProfileTemplateToml(): string {
 function isStarlingModelProfilePath(filePath: string): boolean {
   const normalized = filePath.replace(/\\/g, "/");
   const settingsRoot = path.join(cli.starlingHomeRoot(), "settings").replace(/\\/g, "/");
-  return normalized.startsWith(`${settingsRoot}/claude/`) || normalized.startsWith(`${settingsRoot}/codex/`);
+  return AGENT_PROVIDERS.some((agent) => normalized.startsWith(`${settingsRoot}/${agent}/`));
 }
 
 function isStarlingMcpConfigPath(filePath: string): boolean {
@@ -1727,14 +1799,11 @@ function errorMessage(err: unknown): string {
 }
 
 interface HasSessionMeta {
-  meta?: {
-    session_id: string;
-    project_path?: string | null;
-    custom_title?: string | null;
-    first_prompt?: string | null;
-  };
+  meta?: Partial<cli.SessionMeta> & { session_id: string };
   bookmark?: {
+    id?: string | null;
     session_id: string;
+    provider?: string | null;
     project_path?: string | null;
     title?: string | null;
   };
@@ -1742,12 +1811,83 @@ interface HasSessionMeta {
     name?: string | null;
   };
   monitor?: {
+    session_id?: string | null;
+    canonical_session_id?: string | null;
+    provider?: string | null;
+    project_path?: string | null;
+    file_path?: string | null;
     title?: string | null;
     current_task?: string | null;
   };
   project?: { project_path: string };
   space?: cli.Space;
   model?: cli.ModelConfigSummary;
+}
+
+interface SessionHint {
+  provider?: string;
+  project_path?: string;
+  file_path?: string;
+}
+
+interface SessionCommandTarget {
+  meta: cli.SessionMeta;
+  reference: string;
+}
+
+async function resolveSessionCommandTarget(
+  sessionId: string,
+  node?: unknown
+): Promise<SessionCommandTarget> {
+  const meta = await resolveSessionForResume(sessionId, node);
+  if (!meta) {
+    throw new Error(`Session not found: ${shortSessionId(sessionId)}…`);
+  }
+  return {
+    meta,
+    reference: meta.provider === "pi" ? meta.file_path : meta.session_id,
+  };
+}
+
+async function resolveBookmarkId(sessionId: string, node?: unknown): Promise<string | undefined> {
+  const target = await resolveSessionCommandTarget(sessionId, node);
+  const pins = await cli.listPins();
+  return pins.find((pin) => sameSessionIdentity(target.meta, pin))?.id;
+}
+
+function extractSessionMeta(node: unknown): cli.SessionMeta | undefined {
+  if (!node) return undefined;
+  const candidate = (node as HasSessionMeta).meta;
+  if (
+    !candidate
+    || typeof candidate.provider !== "string"
+    || typeof candidate.file_path !== "string"
+    || typeof candidate.created_at !== "string"
+    || typeof candidate.modified_at !== "string"
+  ) {
+    return undefined;
+  }
+  return candidate as cli.SessionMeta;
+}
+
+function extractBookmarkId(node: unknown): string | undefined {
+  if (!node) return undefined;
+  const id = (node as HasSessionMeta).bookmark?.id;
+  return typeof id === "string" && id.trim() ? id : undefined;
+}
+
+function extractSessionHint(node: unknown): SessionHint | undefined {
+  if (!node) return undefined;
+  const obj = node as HasSessionMeta;
+  const provider = obj.meta?.provider || obj.bookmark?.provider || obj.monitor?.provider || undefined;
+  const projectPath = obj.meta?.project_path || obj.bookmark?.project_path || obj.monitor?.project_path || undefined;
+  const filePath = obj.meta?.file_path || obj.monitor?.file_path || undefined;
+  if (!provider && !projectPath && !filePath) return undefined;
+  return {
+    provider,
+    project_path: projectPath || undefined,
+    file_path: filePath || undefined,
+  };
 }
 
 function extractSessionId(node: unknown): string | undefined {

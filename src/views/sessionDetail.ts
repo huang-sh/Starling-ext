@@ -11,6 +11,7 @@ import {
   formatTokenUsage,
   shortSessionId,
 } from "../sessionDisplay";
+import { sameSessionIdentity } from "../sessionIdentity";
 
 const PANEL_TITLE = "Session Detail";
 
@@ -25,14 +26,14 @@ export class SessionDetailPanel {
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
   }
 
-  public static async createOrShow(sessionId: string): Promise<void> {
+  public static async createOrShow(sessionRef: string): Promise<void> {
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
       : undefined;
 
     if (SessionDetailPanel.currentPanel) {
       SessionDetailPanel.currentPanel._panel.reveal(column);
-      await SessionDetailPanel.currentPanel.update(sessionId);
+      await SessionDetailPanel.currentPanel.update(sessionRef);
       return;
     }
 
@@ -44,25 +45,29 @@ export class SessionDetailPanel {
     );
 
     SessionDetailPanel.currentPanel = new SessionDetailPanel(panel);
-    await SessionDetailPanel.currentPanel.update(sessionId);
+    await SessionDetailPanel.currentPanel.update(sessionRef);
   }
 
-  private async update(sessionId: string): Promise<void> {
-    this._currentSessionId = sessionId;
-    const shortId = shortSessionId(sessionId);
-    this._panel.title = `Session ${shortId}`;
+  private async update(sessionRef: string): Promise<void> {
+    this._currentSessionId = sessionRef;
+    this._panel.title = PANEL_TITLE;
 
     try {
       // Fetch static metadata + live monitor snapshot in parallel. If monitor
       // fails, the panel still renders with static data only.
       const [meta, snap] = await Promise.all([
-        cli.getSession(sessionId),
+        cli.getSession(sessionRef),
         cli.getMonitorSnapshot().catch(() => null),
       ]);
+      this._currentSessionId = meta.session_id;
+      this._panel.title = `Session ${shortSessionId(meta.session_id)}`;
       const live = snap
-        ? monitorRows(snap).find(
-            (r) => r.session_id === sessionId || r.canonical_session_id === sessionId
-          )
+        ? monitorRows(snap).find((row) => sameSessionIdentity(meta, {
+            provider: row.provider,
+            session_id: row.canonical_session_id || row.session_id,
+            project_path: row.project_path,
+            file_path: row.file_path,
+          }))
         : undefined;
       this._panel.webview.html = this.renderHtml(meta, live);
     } catch (err) {

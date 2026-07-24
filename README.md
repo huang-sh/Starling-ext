@@ -8,20 +8,20 @@
   <img src="icons/starling.png" alt="Starling Agent logo" width="160">
 </p>
 
-VS Code monitor and workspace for Claude Code and Codex sessions: live status, catalogs, projects, model profiles, resume, and fork.
+VS Code monitor and workspace for Claude Code, Codex, and Pi sessions: live status, catalogs, projects, model profiles, resume, and fork.
 
 It works with the Starling CLI and turns local agent history into four focused sidebar views: Monitor, Catalog, Projects, and Models.
 
-Current release: **0.1.8**
+Current release: **0.1.9**
 
 - VS Code Marketplace: [`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
-- GitHub Release: [`v0.1.8`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.8)
+- GitHub Release: [`v0.1.9`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.9)
 - CLI package: [`starling-ai`](https://www.npmjs.com/package/starling-ai)
 
 The GitHub release includes the packaged VSIX:
 
 ```text
-starling-ai-0.1.8.vsix
+starling-ai-0.1.9.vsix
 ```
 
 ## Requirements
@@ -48,7 +48,7 @@ npm install -g starling-ai
 
 You can also use the prompt to open the `starling.cliPath` setting.
 
-Starling CLI 0.1.0 or newer is recommended so the Monitor view can consume the current `starling top --json` protocol.
+Use a Pi-capable Starling CLI build for Pi support. Managed Pi launch/resume also requires Pi 0.76 or newer; Pi remains a separately installed agent and is not bundled with this extension.
 
 ## Views
 
@@ -85,13 +85,14 @@ Project session nodes support the same session actions as the Monitor view.
 
 ### Models
 
-Browse Starling-managed Claude and Codex model profiles.
+Browse Starling-managed Claude, Codex, and Pi model profiles.
 
 Use the Models view title bar to create a model profile template. The extension creates:
 
 ```text
 ~/.starling/settings/claude/<name>.json
 ~/.starling/settings/codex/<name>.toml
+~/.starling/settings/pi/<name>.json
 ```
 
 and opens the profile file in VS Code for editing.
@@ -105,7 +106,7 @@ Right-click a model profile to:
 
 ### Monitor
 
-Monitor pinned, active, and recent Claude Code and Codex sessions with live status, context, token, CPU, memory, and task details.
+Monitor pinned, active, and recent Claude Code, Codex, and Pi sessions with live status, context, token, CPU, memory, and task details.
 
 The Monitor view is backed by `starling top --json` and refreshes in the background. It groups sessions into:
 
@@ -115,7 +116,9 @@ The Monitor view is backed by `starling top --json` and refreshes in the backgro
 - Recent monitor: recent unpinned sessions in the configured Monitor sort order.
 - Static sessions: fallback session list if live monitor data is temporarily unavailable.
 
-Use `Starling: Set Monitor Sort` or the Monitor view title button to sort by activity, recent activity, tokens, creation time, memory, CPU, context, skills, or tools. Use `Starling: Set Monitor Agent Filter` to show all agents, only Claude, or only Codex.
+Use `Starling: Set Monitor Sort` or the Monitor view title button to sort by activity, recent activity, tokens, creation time, memory, CPU, context, skills, or tools. Use `Starling: Set Monitor Agent Filter` to show all agents, only Claude, only Codex, or only Pi.
+
+On Linux, Pi hides one-shot CLI arguments from the process list after startup. Pi sessions launched through Starling carry managed identity and are mapped reliably; for Pi started outside Starling with a custom session root, persist that root with `PI_CODING_AGENT_SESSION_DIR` or Pi `settings.json`.
 
 Session states are shown with colored VS Code theme icons:
 
@@ -161,6 +164,7 @@ Common commands:
 - `Starling: Open Model Settings`
 - `Starling: Start Agent Session`
 - `Starling: Start Agent Session in Catalog`
+- Catalog context menu: `Run Agent > Pi`
 - `Starling: Rename Catalog`
 - `Starling: Delete Catalog`
 - `Starling: Catalog Tree`
@@ -211,7 +215,7 @@ Sort mode used for the Monitor view. Supported values are `activity`, `recent`, 
 
 ### `starling.monitorAgent`
 
-Agent filter used for the Monitor view. Supported values are `all`, `claude`, and `codex`.
+Agent filter used for the Monitor view. Supported values are `all`, `claude`, `codex`, and `pi`.
 
 ### `starling.projectSessionLimit`
 
