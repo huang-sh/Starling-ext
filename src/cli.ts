@@ -5,7 +5,7 @@ import { join } from "path";
 import { promisify } from "util";
 import * as vscode from "vscode";
 import type { AgentProvider } from "./agent";
-import { logError } from "./logging";
+import { monitorRetryDelayMs, monitorTimeoutMs } from "./monitorPolicy";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_MAX_BUFFER = 50 * 1024 * 1024;
@@ -266,7 +266,14 @@ type CacheEntry = {
 };
 
 const commandCache = new Map<string, CacheEntry>();
-const monitorCache = new Map<string, { expiresAt: number; value?: MonitorSnapshot; inFlight?: Promise<MonitorSnapshot> }>();
+type MonitorCacheEntry = {
+  expiresAt: number;
+  value?: MonitorSnapshot;
+  inFlight?: Promise<MonitorSnapshot>;
+  failureCount?: number;
+  retryAfter?: number;
+};
+const monitorCache = new Map<string, MonitorCacheEntry>();
 
 function cacheTtlMs(): number {
   const configured = vscode.workspace.getConfiguration("starling").get<number>("cacheTtlSeconds", DEFAULT_CACHE_TTL_SECONDS);
@@ -308,7 +315,7 @@ function cacheKeyForCommand(args: string[]): string {
 
 export function clearCliCache(prefix?: string): void {
   if (!prefix) {
-    commandCache.clear();
+    clearCommandCache();
     monitorCache.clear();
     return;
   }
@@ -316,6 +323,15 @@ export function clearCliCache(prefix?: string): void {
     if (key.startsWith(prefix)) {
       monitorCache.delete(key);
     }
+  }
+  clearCommandCache(prefix);
+}
+
+/** Clear regular CLI query results without discarding the monitor's last good snapshot. */
+export function clearCommandCache(prefix?: string): void {
+  if (!prefix) {
+    commandCache.clear();
+    return;
   }
   for (const key of commandCache.keys()) {
     if (key.startsWith(prefix)) {
@@ -393,11 +409,13 @@ function starlingCommand(args: string[]): { file: string; args: string[] } {
 async function execStarlingRaw(args: string[], options: Partial<CliExecOptions> = {}): Promise<string> {
   const command = starlingCommand(args);
   const starlingHome = starlingHomePath();
+  const timeout = options.timeout ?? DEFAULT_TEXT_TIMEOUT;
+  const startedAt = Date.now();
   try {
     const { stdout } = await execFileAsync(command.file, command.args, {
       env: starlingHome ? { ...process.env, STARLING_HOME: starlingHome } : process.env,
       maxBuffer: options.maxBuffer ?? DEFAULT_MAX_BUFFER,
-      timeout: options.timeout ?? DEFAULT_TEXT_TIMEOUT,
+      timeout,
       // On Windows, npm installs three shims for global bins: `starling` (bash),
       // `starling.cmd` (cmd.exe), `starling.ps1` (PowerShell). Without a shell,
       // child_process does not consult PATHEXT, so `execFile("starling", ...)`
@@ -411,14 +429,14 @@ async function execStarlingRaw(args: string[], options: Partial<CliExecOptions> 
     return stdout as string;
   } catch (err) {
     if (isCommandNotFoundError(err)) {
-      logError(`Starling CLI not found while running: ${command.file} ${command.args.join(" ")}`, err);
       throw new StarlingCliNotFoundError(command.file);
     }
-    const message = err instanceof Error ? err.message : String(err);
     const anyError = err as {
       stdout?: string;
       stderr?: string;
-      code?: number | string;
+      code?: number | string | null;
+      killed?: boolean;
+      signal?: NodeJS.Signals | string | null;
     };
     const stdout = sanitizeCliOutput(anyError?.stdout);
     const stderr = sanitizeCliOutput(anyError?.stderr);
@@ -426,10 +444,16 @@ async function execStarlingRaw(args: string[], options: Partial<CliExecOptions> 
     const details: string[] = [];
     if (stdout) details.push(`stdout=${stdout}`);
     if (stderr) details.push(`stderr=${stderr}`);
-    if (anyError?.code !== undefined) details.push(`code=${anyError.code}`);
-    const wrapped = new Error(`starling command failed: ${commandText}${details.length ? `: ${details.join(" | ")}` : ""}`);
-    logError("Starling CLI command failed.", wrapped);
-    throw wrapped;
+    if (anyError?.killed !== undefined) details.push(`killed=${anyError.killed}`);
+    if (anyError?.signal) details.push(`signal=${anyError.signal}`);
+    if (anyError?.code !== undefined && anyError.code !== null) details.push(`code=${anyError.code}`);
+    details.push(`elapsed=${Date.now() - startedAt}ms`);
+    const reason = anyError?.killed
+      ? `starling command timed out after ${timeout}ms`
+      : anyError?.signal
+        ? `starling command terminated by ${anyError.signal}`
+        : "starling command failed";
+    throw new Error(`${reason}: ${commandText}${details.length ? `: ${details.join(" | ")}` : ""}`);
   }
 }
 
@@ -562,6 +586,13 @@ function monitorCacheTtlMs(): number {
   const normalized = Number(configured);
   if (!Number.isFinite(normalized) || normalized < 0) return 2000;
   return normalized * 1000;
+}
+
+function monitorCommandTimeoutMs(): number {
+  const configured = vscode.workspace
+    .getConfiguration("starling")
+    .get<number>("monitorCommandTimeoutSeconds", 60);
+  return monitorTimeoutMs(configured);
 }
 
 function normalizeMonitorSnapshot(raw: unknown): MonitorSnapshot {
@@ -721,28 +752,37 @@ export async function getMonitorSnapshot(
   const cacheKey = `monitor:${cacheKeyForCommand(args)}`;
   const cached = monitorCache.get(cacheKey);
   const now = Date.now();
+  if (cached?.inFlight) {
+    return cached.inFlight;
+  }
+  if (opts.allowStale !== false && cached?.value && cached.retryAfter && cached.retryAfter > now) {
+    return cached.value;
+  }
   if (!opts.force && cached?.value && cached.expiresAt > now) {
     return cached.value;
   }
-  if (!opts.force && cached?.inFlight) {
-    return cached.inFlight;
-  }
 
-  const inFlight = execStarlingJson<unknown>(args, { timeout: 30_000 })
+  const inFlight = execStarlingJson<unknown>(args, { timeout: monitorCommandTimeoutMs() })
     .then((raw) => {
       const value = normalizeMonitorSnapshot(raw);
       monitorCache.set(cacheKey, {
         expiresAt: Date.now() + monitorCacheTtlMs(),
         value,
+        failureCount: 0,
       });
       return value;
     })
     .catch((err) => {
-      const stale = monitorCache.get(cacheKey)?.value;
+      const latest = monitorCache.get(cacheKey);
+      const stale = latest?.value ?? cached?.value;
       if (stale && opts.allowStale !== false) {
+        const failureCount = (latest?.failureCount ?? cached?.failureCount ?? 0) + 1;
+        const retryAfter = Date.now() + monitorRetryDelayMs(failureCount);
         monitorCache.set(cacheKey, {
-          expiresAt: Date.now() + Math.min(monitorCacheTtlMs(), 1000),
+          expiresAt: retryAfter,
           value: stale,
+          failureCount,
+          retryAfter,
         });
         return stale;
       }
@@ -754,6 +794,8 @@ export async function getMonitorSnapshot(
     expiresAt: cached?.expiresAt ?? 0,
     value: cached?.value,
     inFlight,
+    failureCount: cached?.failureCount,
+    retryAfter: cached?.retryAfter,
   });
   return inFlight;
 }

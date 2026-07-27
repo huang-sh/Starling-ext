@@ -135,7 +135,7 @@ export function activate(context: vscode.ExtensionContext): void {
   vscode.window.registerTreeDataProvider("starling-mcp", mcpProvider);
 
   const refreshViews = (scope: RefreshScope = "all") => {
-    cli.clearCliCache();
+    cli.clearCommandCache();
     if (scope === "all" || scope === "sessions") {
       sessionsProvider.refresh();
     }

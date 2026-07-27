@@ -12,16 +12,16 @@ VS Code monitor and workspace for Claude Code, Codex, and Pi sessions: live stat
 
 It works with the Starling CLI and turns local agent history into four focused sidebar views: Monitor, Catalog, Projects, and Models.
 
-Current release: **0.1.9**
+Current release: **0.1.10**
 
 - VS Code Marketplace: [`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
-- GitHub Release: [`v0.1.9`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.9)
+- GitHub Release: [`v0.1.10`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.10)
 - CLI package: [`starling-ai`](https://www.npmjs.com/package/starling-ai)
 
 The GitHub release includes the packaged VSIX:
 
 ```text
-starling-ai-0.1.9.vsix
+starling-ai-0.1.10.vsix
 ```
 
 ## Requirements
@@ -180,7 +180,8 @@ Common commands:
   "starling.cliPath": "starling",
   "starling.homePath": "",
   "starling.cacheTtlSeconds": 30,
-  "starling.monitorRefreshSeconds": 3,
+  "starling.monitorRefreshSeconds": 5,
+  "starling.monitorCommandTimeoutSeconds": 60,
   "starling.monitorCacheTtlSeconds": 2,
   "starling.monitorSort": "activity",
   "starling.monitorAgent": "all",
@@ -203,11 +204,15 @@ How long CLI query results are cached. Set to `0` to disable cache.
 
 ### `starling.monitorRefreshSeconds`
 
-How often the extension refreshes live session status in the background. The default is `3` seconds.
+How often the extension refreshes live session status in the background. The default is `5` seconds. A small random jitter prevents multiple VS Code windows from polling at exactly the same time.
+
+### `starling.monitorCommandTimeoutSeconds`
+
+Maximum time to wait for each `starling top` command. The default is `60` seconds. Increase it for very large session indexes or heavily loaded hosts.
 
 ### `starling.monitorCacheTtlSeconds`
 
-How long live monitor snapshots are cached. The extension keeps the last good snapshot when a refresh fails, so transient CLI errors do not blank the Monitor view.
+How long live monitor snapshots are cached. The extension keeps the last good snapshot and applies retry backoff when a refresh fails, so transient CLI errors do not blank the Monitor view or start overlapping commands.
 
 ### `starling.monitorSort`
 

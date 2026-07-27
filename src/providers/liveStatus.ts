@@ -3,6 +3,7 @@ import * as cli from "../cli";
 import { clearProblem, logError, reportProblem } from "../logging";
 import { getConfiguredMonitorAgentFilter } from "../monitorAgent";
 import { getConfiguredMonitorSort } from "../monitorSort";
+import { monitorRefreshDelayMs } from "../monitorPolicy";
 import {
   scopedSessionLookupKey,
   sessionFileLookupKey,
@@ -142,7 +143,7 @@ export class LiveStatusStore implements vscode.Disposable {
       if (this.disposed) return;
       await this.refresh({ force: true });
       if (this.disposed) return;
-      this.timer = setTimeout(tick, getMonitorRefreshMs());
+      this.timer = setTimeout(tick, monitorRefreshDelayMs(getMonitorRefreshMs()));
     };
     this.timer = setTimeout(tick, 0);
     return new vscode.Disposable(() => this.dispose());
@@ -154,7 +155,7 @@ export class LiveStatusStore implements vscode.Disposable {
   }
 
   async refresh(opts: { force: boolean }): Promise<cli.MonitorSnapshot | undefined> {
-    if (this.inFlight && !opts.force) return this.inFlight;
+    if (this.inFlight) return this.inFlight;
     const serial = ++this.requestSerial;
     const request = (async () => {
       try {

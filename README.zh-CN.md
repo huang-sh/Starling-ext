@@ -12,16 +12,16 @@ Starling Agent 是 Claude Code、Codex 与 Pi 会话的 VS Code 监控与工作�
 
 它配合 Starling CLI 使用，把本地 agent 历史整理成四个侧边栏视图：Monitor、Catalog、Projects、Models。
 
-当前版本：**0.1.9**
+当前版本：**0.1.10**
 
 - VS Code Marketplace：[`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
-- GitHub Release：[`v0.1.9`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.9)
+- GitHub Release：[`v0.1.10`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.10)
 - CLI 包：[`starling-ai`](https://www.npmjs.com/package/starling-ai)
 
 GitHub Release 会附带打包好的 VSIX：
 
 ```text
-starling-ai-0.1.9.vsix
+starling-ai-0.1.10.vsix
 ```
 
 ## 安装要求
@@ -182,7 +182,8 @@ Linux 上，Pi 启动后会从进程列表隐藏一次性 CLI 参数。通过 St
   "starling.cliPath": "starling",
   "starling.homePath": "",
   "starling.cacheTtlSeconds": 30,
-  "starling.monitorRefreshSeconds": 3,
+  "starling.monitorRefreshSeconds": 5,
+  "starling.monitorCommandTimeoutSeconds": 60,
   "starling.monitorCacheTtlSeconds": 2,
   "starling.monitorSort": "activity",
   "starling.monitorAgent": "all",
@@ -205,11 +206,15 @@ CLI 查询结果缓存时间。设置为 `0` 可以关闭缓存。
 
 ### `starling.monitorRefreshSeconds`
 
-后台刷新实时会话状态的间隔。默认是 `3` 秒。
+后台刷新实时会话状态的间隔。默认是 `5` 秒。扩展会加入少量随机抖动，避免多个 VS Code 窗口在同一时刻轮询。
+
+### `starling.monitorCommandTimeoutSeconds`
+
+每次等待 `starling top` 命令完成的最长时间。默认是 `60` 秒。会话索引很大或主机负载较高时可以调大。
 
 ### `starling.monitorCacheTtlSeconds`
 
-实时 monitor 快照缓存时间。刷新失败时，扩展会保留最近一次有效数据，避免临时 CLI 错误把视图清空。
+实时 monitor 快照缓存时间。刷新失败时，扩展会保留最近一次有效数据并退避重试，避免临时 CLI 错误把视图清空或启动重叠命令。
 
 ### `starling.monitorSort`
 
