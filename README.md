@@ -10,21 +10,23 @@
 
 VS Code monitor and workspace for Claude Code, Codex, and Pi sessions: live status, catalogs, projects, model profiles, resume, and fork.
 
-It works with the Starling CLI and turns local agent history into four focused sidebar views: Monitor, Catalog, Projects, and Models.
+It works with the Starling CLI and turns local agent history into focused Monitor, Catalog, Projects, and Models views, plus Starling Chat in VS Code's right sidebar.
 
-Current release: **0.1.10**
+Current release: **0.2.0**
 
 - VS Code Marketplace: [`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
-- GitHub Release: [`v0.1.10`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.10)
+- GitHub Release: [`v0.2.0`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.2.0)
 - CLI package: [`starling-ai`](https://www.npmjs.com/package/starling-ai)
 
 The GitHub release includes the packaged VSIX:
 
 ```text
-starling-ai-0.1.10.vsix
+starling-ai-0.2.0.vsix
 ```
 
 ## Requirements
+
+The extension requires VS Code 1.106 or newer so Starling Chat can be contributed directly to the secondary (right) sidebar.
 
 Install the Starling CLI first:
 
@@ -38,7 +40,7 @@ Then make sure VS Code can find the `starling` command:
 starling --help
 ```
 
-If VS Code cannot find `starling` on `PATH`, set `starling.cliPath` to an absolute executable path in VS Code settings.
+If VS Code cannot find `starling` on `PATH`, set `starling.cliPath` to the npm-installed `starling` entry point in VS Code settings. Starling Chat needs that wrapper to locate its SDK Host; a standalone native binary requires explicit `STARLING_PI_SDK_HOST` and `STARLING_PI_SDK_NODE` environment variables.
 
 When the extension starts and cannot find the Starling CLI, it prompts you to install it with:
 
@@ -48,9 +50,24 @@ npm install -g starling-ai
 
 You can also use the prompt to open the `starling.cliPath` setting.
 
-Use a Pi-capable Starling CLI build for Pi support. Managed Pi launch/resume also requires Pi 0.76 or newer; Pi remains a separately installed agent and is not bundled with this extension.
+Starling Chat requires the current `starling-ai` npm package on Node.js 22.19 or newer. The CLI includes a fixed Pi SDK dependency and hosts it directly; it does not launch `pi --mode rpc`, so a separate Pi CLI installation is unnecessary for Chat. The VS Code extension itself does not bundle or import the SDK.
 
 ## Views
+
+### Starling Chat
+
+Open **Starling: Open Starling Chat** to show it in VS Code's secondary (right) sidebar. The view connects to the Starling CLI's direct Pi SDK host and supports:
+
+- Streaming assistant text and thinking.
+- Live tool start, progress, result, and error cards.
+- Follow-up messages while Pi is busy.
+- Stopping the current turn and starting a fresh session.
+- Resuming a historical Pi session by its absolute session-file path.
+- Pi extension confirm, select, input, editor, and notification requests through native VS Code UI.
+
+The chat uses the first workspace folder as its working directory. Set `starling.chatPiSetting` to a Starling Pi model-profile name, or leave it empty to use the SDK's default model settings. Closing the view cancels pending UI requests and closes the managed SDK host through stdin before using process signals as a timeout fallback.
+
+The view follows VS Code Workspace Trust. An untrusted workspace is passed to the SDK Host as untrusted, so project-local Pi settings, packages, and extensions are not activated.
 
 ### Catalog
 
@@ -147,6 +164,10 @@ Open the Command Palette and search for `Starling`.
 
 Common commands:
 
+- `Starling: Open Starling Chat`
+- `Starling: New Starling Chat`
+- `Starling: Resume Starling Chat`
+- `Starling: Stop Agent Turn`
 - `Starling: Refresh`
 - `Starling: Set Monitor Agent Filter`
 - `Starling: Set Monitor Sort`
@@ -179,6 +200,7 @@ Common commands:
 {
   "starling.cliPath": "starling",
   "starling.homePath": "",
+  "starling.chatPiSetting": "",
   "starling.cacheTtlSeconds": 30,
   "starling.monitorRefreshSeconds": 5,
   "starling.monitorCommandTimeoutSeconds": 60,
@@ -197,6 +219,10 @@ Path to the Starling CLI executable. Use an absolute path if the VS Code extensi
 ### `starling.homePath`
 
 Optional Starling data directory. Leave empty to use `~/.starling`. When set, the extension passes this path as `STARLING_HOME` to the Starling CLI.
+
+### `starling.chatPiSetting`
+
+Optional Starling Pi model-profile name used by the right-sidebar chat. Leave empty to use Pi's default model settings.
 
 ### `starling.cacheTtlSeconds`
 

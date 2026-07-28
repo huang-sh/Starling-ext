@@ -10,21 +10,23 @@
 
 Starling Agent 是 Claude Code、Codex 与 Pi 会话的 VS Code 监控与工作台，支持实时状态、Catalog、Projects、模型配置、resume 和 fork。
 
-它配合 Starling CLI 使用，把本地 agent 历史整理成四个侧边栏视图：Monitor、Catalog、Projects、Models。
+它配合 Starling CLI 使用，把本地 agent 历史整理成 Monitor、Catalog、Projects、Models 等视图，并在 VS Code 右侧边栏提供 Starling Chat。
 
-当前版本：**0.1.10**
+当前版本：**0.2.0**
 
 - VS Code Marketplace：[`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
-- GitHub Release：[`v0.1.10`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.1.10)
+- GitHub Release：[`v0.2.0`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.2.0)
 - CLI 包：[`starling-ai`](https://www.npmjs.com/package/starling-ai)
 
 GitHub Release 会附带打包好的 VSIX：
 
 ```text
-starling-ai-0.1.10.vsix
+starling-ai-0.2.0.vsix
 ```
 
 ## 安装要求
+
+扩展要求 VS Code 1.106 或更新版本，以便把 Starling Chat 直接注册到右侧辅助边栏。
 
 先安装 Starling CLI：
 
@@ -38,7 +40,7 @@ npm install -g starling-ai
 starling --help
 ```
 
-如果 VS Code 的扩展进程找不到 `starling`，请在设置里把 `starling.cliPath` 改成可执行文件的绝对路径。
+如果 VS Code 的扩展进程找不到 `starling`，请在设置里把 `starling.cliPath` 指向 npm 安装的 `starling` 入口。Starling Chat 需要该 wrapper 定位 SDK Host；若直接配置独立 native binary，还必须显式提供 `STARLING_PI_SDK_HOST` 与 `STARLING_PI_SDK_NODE` 环境变量。
 
 扩展启动时如果找不到 Starling CLI，会提示你执行：
 
@@ -48,9 +50,24 @@ npm install -g starling-ai
 
 也可以通过提示直接打开 `starling.cliPath` 设置。
 
-Pi 功能需要支持 Pi 的 Starling CLI；受管的 Pi 启动和恢复还要求 Pi 0.76 或更新版本。Pi 仍是单独安装的 Agent，本扩展不会内置 Pi。
+Starling Chat 需要 Node.js 22.19 或更新版本上的最新版 `starling-ai` npm 包。CLI 固定包含 Pi SDK，并由 Starling Host 直接加载，不会执行 `pi --mode rpc`，因此聊天功能不需要单独安装 Pi CLI。VS Code 扩展本身不内置或加载 SDK。
 
 ## 视图
+
+### Starling Chat
+
+运行 **Starling: Open Starling Chat**，即可在 VS Code 的右侧辅助边栏打开 Starling Chat。该视图连接 Starling CLI 的直接 Pi SDK Host，支持：
+
+- 流式显示回答与 thinking。
+- 实时显示工具开始、进度、结果与错误。
+- Pi 忙碌时排队发送 follow-up。
+- 停止当前 turn，以及启动新 session。
+- 通过绝对 session 文件路径恢复历史 Pi session。
+- 使用 VS Code 原生界面处理 Pi extension 的 confirm、select、input、editor 和 notify 请求。
+
+聊天默认使用第一个 workspace 文件夹作为工作目录。可以把 `starling.chatPiSetting` 设置为 Starling 的 Pi 模型配置名；留空则使用 SDK 默认模型配置。关闭视图时，扩展会取消未完成的交互请求，先通过 stdin 关闭受管 SDK Host，超时后才使用进程信号兜底。
+
+该视图遵循 VS Code Workspace Trust。未信任 workspace 会以 untrusted 状态交给 SDK Host，因此不会启用项目内的 Pi 设置、package 与 extension。
 
 ### Catalog
 
@@ -149,6 +166,10 @@ Linux 上，Pi 启动后会从进程列表隐藏一次性 CLI 参数。通过 St
 
 常用命令：
 
+- `Starling: Open Starling Chat`
+- `Starling: New Starling Chat`
+- `Starling: Resume Starling Chat`
+- `Starling: Stop Agent Turn`
 - `Starling: Refresh`
 - `Starling: Set Monitor Agent Filter`
 - `Starling: Set Monitor Sort`
@@ -181,6 +202,7 @@ Linux 上，Pi 启动后会从进程列表隐藏一次性 CLI 参数。通过 St
 {
   "starling.cliPath": "starling",
   "starling.homePath": "",
+  "starling.chatPiSetting": "",
   "starling.cacheTtlSeconds": 30,
   "starling.monitorRefreshSeconds": 5,
   "starling.monitorCommandTimeoutSeconds": 60,
@@ -199,6 +221,10 @@ Starling CLI 可执行文件路径。如果 VS Code 扩展进程找不到 `starl
 ### `starling.homePath`
 
 可选的 Starling 数据目录。留空时使用 `~/.starling`。设置后，扩展会把它作为 `STARLING_HOME` 传给 Starling CLI。
+
+### `starling.chatPiSetting`
+
+右侧 Pi Chat 使用的可选 Starling Pi 模型配置名。留空时使用 Pi 默认模型配置。
 
 ### `starling.cacheTtlSeconds`
 

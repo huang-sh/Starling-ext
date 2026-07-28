@@ -2,7 +2,7 @@
   "name": "starling-ai",
   "displayName": "Starling Agent",
   "description": "VS Code monitor and workspace for Claude Code, Codex, and Pi sessions: live status, catalogs, projects, model profiles, resume, and fork.",
-  "version": "0.1.10",
+  "version": "0.2.0",
   "publisher": "huangsh",
   "icon": "icons/starling.png",
   "license": "MIT",
@@ -11,7 +11,7 @@
     "url": "https://github.com/huang-sh/Starling-ext"
   },
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.106.0"
   },
   "categories": [
     "Chat",
@@ -24,6 +24,11 @@
     "onView:starling-models",
     "onView:starling-mcp",
     "onView:starling-sessions",
+    "onView:starling-pi-chat",
+    "onCommand:starling.openChat",
+    "onCommand:starling.chatNewSession",
+    "onCommand:starling.chatResumeSession",
+    "onCommand:starling.chatStop",
     "onCommand:starling.refresh",
     "onCommand:starling.setMonitorAgent",
     "onCommand:starling.setMonitorSort",
@@ -82,6 +87,13 @@
           "title": "Starling",
           "icon": "icons/starling_logo.svg"
         }
+      ],
+      "secondarySidebar": [
+        {
+          "id": "starling-chat",
+          "title": "Starling Chat",
+          "icon": "icons/starling_logo.svg"
+        }
       ]
     },
     "views": {
@@ -111,9 +123,41 @@
           "name": "Monitor",
           "icon": "$(server)"
         }
+      ],
+      "starling-chat": [
+        {
+          "id": "starling-pi-chat",
+          "type": "webview",
+          "name": "Starling Chat",
+          "contextualTitle": "Starling Chat"
+        }
       ]
     },
     "commands": [
+      {
+        "command": "starling.openChat",
+        "category": "Starling",
+        "title": "Open Starling Chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "starling.chatNewSession",
+        "category": "Starling",
+        "title": "New Starling Chat",
+        "icon": "$(add)"
+      },
+      {
+        "command": "starling.chatResumeSession",
+        "category": "Starling",
+        "title": "Resume Starling Chat",
+        "icon": "$(history)"
+      },
+      {
+        "command": "starling.chatStop",
+        "category": "Starling",
+        "title": "Stop Agent Turn",
+        "icon": "$(debug-stop)"
+      },
       {
         "command": "starling.refresh",
         "category": "Starling",
@@ -571,6 +615,21 @@
       ],
       "view/title": [
         {
+          "command": "starling.chatNewSession",
+          "when": "view == starling-pi-chat",
+          "group": "navigation@1"
+        },
+        {
+          "command": "starling.chatResumeSession",
+          "when": "view == starling-pi-chat",
+          "group": "navigation@2"
+        },
+        {
+          "command": "starling.chatStop",
+          "when": "view == starling-pi-chat",
+          "group": "navigation@3"
+        },
+        {
           "command": "starling.catalogCreate",
           "when": "view == starling-spaces",
           "group": "navigation@1"
@@ -636,12 +695,17 @@
         "starling.cliPath": {
           "type": "string",
           "default": "starling",
-          "description": "Path to the Starling CLI executable. Use an absolute path if the VS Code extension host cannot find starling on PATH."
+          "description": "Path to the Starling CLI. Prefer the npm-installed starling wrapper because Starling Chat uses it to locate the Pi SDK Host."
         },
         "starling.homePath": {
           "type": "string",
           "default": "",
           "description": "Optional Starling data directory. Leave empty to use ~/.starling. When set, the extension passes this path as STARLING_HOME to the Starling CLI."
+        },
+        "starling.chatPiSetting": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Pi model-profile name for Starling Chat. Leave empty to use the SDK's default model settings."
         },
         "starling.cacheTtlSeconds": {
           "type": "number",
@@ -733,7 +797,7 @@
     "test": "npm run compile && node --test test/*.test.cjs"
   },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "^1.106.0",
     "@types/node": "^20.14.0",
     "typescript": "^5.5.0"
   },

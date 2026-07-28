@@ -8,6 +8,7 @@ import { ModelsProvider } from "./providers/models";
 import { McpProvider, extractMcpServerName } from "./providers/mcp";
 import { LiveStatusStore } from "./providers/liveStatus";
 import { SessionDetailPanel } from "./views/sessionDetail";
+import { PI_CHAT_VIEW_ID, PiChatViewProvider } from "./views/piChat";
 import * as cli from "./cli";
 import { shortSessionId } from "./sessionDisplay";
 import {
@@ -123,6 +124,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const projectsProvider = new ProjectsProvider(liveStatus);
   const modelsProvider = new ModelsProvider();
   const mcpProvider = new McpProvider();
+  const piChatProvider = new PiChatViewProvider();
 
   const sessionsTree = vscode.window.createTreeView("starling-sessions", {
     treeDataProvider: sessionsProvider,
@@ -133,6 +135,16 @@ export function activate(context: vscode.ExtensionContext): void {
   vscode.window.registerTreeDataProvider("starling-projects", projectsProvider);
   vscode.window.registerTreeDataProvider("starling-models", modelsProvider);
   vscode.window.registerTreeDataProvider("starling-mcp", mcpProvider);
+  context.subscriptions.push(
+    piChatProvider,
+    vscode.window.registerWebviewViewProvider(PI_CHAT_VIEW_ID, piChatProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+    vscode.commands.registerCommand("starling.openChat", () => piChatProvider.open()),
+    vscode.commands.registerCommand("starling.chatNewSession", () => piChatProvider.newSession()),
+    vscode.commands.registerCommand("starling.chatResumeSession", () => piChatProvider.chooseHistoricalSession()),
+    vscode.commands.registerCommand("starling.chatStop", () => piChatProvider.abort()),
+  );
 
   const refreshViews = (scope: RefreshScope = "all") => {
     cli.clearCommandCache();

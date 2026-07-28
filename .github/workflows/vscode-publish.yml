@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   publish:
@@ -32,10 +32,31 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Read extension version
+        id: metadata
+        run: echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+
       - name: Package extension
-        run: npx @vscode/vsce package
+        run: npx @vscode/vsce package --out "starling-ai-${{ steps.metadata.outputs.version }}.vsix"
 
       - name: Publish to VS Code Marketplace
-        run: npx @vscode/vsce publish -p "$VSCE_PAT"
+        run: npx @vscode/vsce publish --packagePath "starling-ai-${{ steps.metadata.outputs.version }}.vsix" -p "$VSCE_PAT"
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Create GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          set -euo pipefail
+          vsix="starling-ai-${VERSION}.vsix"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$vsix" --clobber
+          else
+            gh release create "$TAG" "$vsix" \
+              --title "Starling Agent ${VERSION}" \
+              --generate-notes
+          fi
