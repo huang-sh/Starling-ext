@@ -34,7 +34,7 @@ jobs:
 
       - name: Read extension version
         id: metadata
-        run: echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+        run: node -p '"version=" + require("./package.json").version' >> "$GITHUB_OUTPUT"
 
       - name: Package extension
         run: npx @vscode/vsce package --out "starling-ai-${{ steps.metadata.outputs.version }}.vsix"
@@ -45,18 +45,25 @@ jobs:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
       - name: Create GitHub release
-        if: github.ref_type == 'tag'
+        if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
           VERSION: ${{ steps.metadata.outputs.version }}
         run: |
           set -euo pipefail
           vsix="starling-ai-${VERSION}.vsix"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$vsix" --clobber
+          if [[ "$REF_TYPE" == "tag" ]]; then
+            tag="$REF_NAME"
           else
-            gh release create "$TAG" "$vsix" \
+            tag="v${VERSION}"
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$vsix" --clobber
+          else
+            gh release create "$tag" "$vsix" \
+              --verify-tag \
               --title "Starling Agent ${VERSION}" \
               --generate-notes
           fi
