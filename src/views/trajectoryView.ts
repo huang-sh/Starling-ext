@@ -3,6 +3,7 @@ import * as cli from "../cli";
 import { formatCompactTokens, shortSessionId } from "../sessionDisplay";
 
 const PANEL_TITLE = "Session Trajectory";
+const LIVE_POLL_MS = 4_000;
 
 /**
  * Editor-panel webview for the trajectory-v1 ledger.
@@ -11,6 +12,10 @@ const PANEL_TITLE = "Session Trajectory";
  * slider) → turn sections with a step-proportional timeline gutter and a
  * record table. Clicking a record opens an inspector drawer with the full
  * input/output text (when --full data is present).
+ *
+ * While the panel is visible it polls the CLI for changes and pushes updated
+ * rows to the webview; the webview re-renders in place, preserving filters,
+ * scroll position, and the open inspector.
  */
 export class TrajectoryPanel {
   public static currentPanel: TrajectoryPanel | undefined;
@@ -19,10 +24,26 @@ export class TrajectoryPanel {
   private _currentSessionId: string | undefined;
   private _pendingUpdate: Promise<void> = Promise.resolve();
   private _disposed = false;
+  private _full = false;
+  private _timer: ReturnType<typeof setInterval> | undefined;
+  private _lastToken = "";
 
   private constructor(panel: vscode.WebviewPanel) {
     this._panel = panel;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    this._panel.onDidChangeViewState(
+      () => {
+        // Poll only while the panel is actually on screen.
+        if (this._panel.visible) {
+          this.refresh();
+          this.startPolling();
+        } else {
+          this.stopPolling();
+        }
+      },
+      null,
+      this._disposables
+    );
   }
 
   public static async createOrShow(sessionRef: string, full = false): Promise<void> {
@@ -54,15 +75,52 @@ export class TrajectoryPanel {
     return this._pendingUpdate;
   }
 
+  private startPolling(): void {
+    if (this._timer != null || this._disposed) return;
+    this._timer = setInterval(() => {
+      if (this._disposed || !this._panel.visible) return;
+      this.refresh();
+    }, LIVE_POLL_MS);
+  }
+
+  private stopPolling(): void {
+    if (this._timer != null) {
+      clearInterval(this._timer);
+      this._timer = undefined;
+    }
+  }
+
+  /** Poll tick: fetch and push only when the trajectory actually changed. */
+  private refresh(): void {
+    const sessionRef = this._currentSessionId;
+    if (!sessionRef || this._disposed) return;
+    this._pendingUpdate = this._pendingUpdate.then(async () => {
+      if (this._disposed) return;
+      try {
+        const trajectory = await cli.getTrajectory(sessionRef, { full: this._full, maxRecords: 1000 });
+        const token = trajectoryToken(trajectory);
+        if (token === this._lastToken) return;
+        this._lastToken = token;
+        await this._panel.webview.postMessage({ type: "update", token, payload: trajectory });
+      } catch {
+        // Transient CLI failure during live polling; keep the current view.
+      }
+    });
+  }
+
   private async doUpdate(sessionRef: string, full: boolean): Promise<void> {
     this._currentSessionId = sessionRef;
+    this._full = full;
+    this._lastToken = "";
     try {
       this._panel.title = PANEL_TITLE;
       const trajectory = await cli.getTrajectory(sessionRef, { full, maxRecords: 1000 });
       // The panel may have been closed while the CLI call was in flight.
       if (this._disposed) return;
+      this._lastToken = trajectoryToken(trajectory);
       this._panel.title = `Trajectory ${shortSessionId(trajectory.session.id)}`;
       this._panel.webview.html = renderTrajectoryHtml(trajectory);
+      this.startPolling();
     } catch (err) {
       if (this._disposed) return;
       try {
@@ -75,11 +133,23 @@ export class TrajectoryPanel {
 
   private dispose(): void {
     this._disposed = true;
+    this.stopPolling();
     TrajectoryPanel.currentPanel = undefined;
     this._panel.dispose();
     this._disposables.forEach((d) => d.dispose());
     this._disposables = [];
   }
+}
+
+/** Cheap change detector for live polling. */
+function trajectoryToken(t: cli.Trajectory): string {
+  const last = t.records[t.records.length - 1];
+  return [
+    t.session.updatedAt ?? "",
+    t.stats.turns,
+    t.stats.records,
+    last ? `${last.index}:${last.completedAt ?? ""}` : "",
+  ].join("|");
 }
 
 function errorPage(message: string): string {
@@ -287,21 +357,24 @@ function renderTrajectoryHtml(t: cli.Trajectory): string {
   const ICON = { user: "👤", assistant: "💬", reasoning: "🧠", tool: "🔧", system: "⚙", compaction: "📦" };
 
   // ---- header ----
-  $("title").textContent = D.title;
-  const meta = $("meta");
-  meta.innerHTML =
-    "<span>" + esc(D.provider) + "</span><span>" + esc(D.model || "—") + "</span>" +
-    "<span style='opacity:.7'>" + esc(D.id) + "</span>" +
-    (D.parent ? "<span>nested rollout of " + esc(D.parent) + "</span>" : "");
-  const S = D.stats;
-  $("chips").innerHTML = [
-    ["turns", S.turns], ["records", S.records], ["steps", S.steps],
-    ["tools", S.toolCalls + (S.toolErrors ? " (" + S.toolErrors + " err)" : "")],
-    ["tokens ↑" + kfmt(S.tin), "↓" + kfmt(S.tout) + " R" + kfmt(S.tcache)],
-    ["wall", dur(S.durationMs)],
-  ].map(([k, v]) => "<span class='chip'><b>" + esc(String(v)) + "</b> " + esc(String(k)) + "</span>").join("");
-  $("warn").textContent = D.warnings.join("  ⚠  ");
-  $("warn").style.display = D.warnings.length ? "" : "none";
+  function renderHeader() {
+    $("title").textContent = D.title;
+    $("meta").innerHTML =
+      "<span>" + esc(D.provider) + "</span><span>" + esc(D.model || "—") + "</span>" +
+      "<span style='opacity:.7'>" + esc(D.id) + "</span>" +
+      (D.parent ? "<span>nested rollout of " + esc(D.parent) + "</span>" : "");
+    const S = D.stats;
+    $("chips").innerHTML = [
+      ["turns", S.turns], ["records", S.records], ["steps", S.steps],
+      ["tools", S.toolCalls + (S.toolErrors ? " (" + S.toolErrors + " err)" : "")],
+      ["tokens ↑" + kfmt(S.tin), "↓" + kfmt(S.tout) + " R" + kfmt(S.tcache)],
+      ["wall", dur(S.durationMs)],
+      ["live", new Date().toLocaleTimeString()],
+    ].map(([k, v]) => "<span class='chip'><b>" + esc(String(v)) + "</b> " + esc(String(k)) + "</span>").join("");
+    $("warn").textContent = D.warnings.join("  ⚠  ");
+    $("warn").style.display = D.warnings.length ? "" : "none";
+  }
+  renderHeader();
 
   // ---- filter bar ----
   const kindsBar = $("kinds");
@@ -376,6 +449,7 @@ function renderTrajectoryHtml(t: cli.Trajectory): string {
         }
         const row = document.createElement("div");
         row.className = "rrow k-" + r.k + (state.sel === r.i ? " sel" : "");
+        row.dataset.i = String(r.i);
         const durTxt = r.k === "tool" ? dur(r.d) : "";
         row.innerHTML = "<span class='idx'>#" + r.i + "</span>" +
           "<span class='ico'>" + (ICON[r.k] || "·") + "</span>" +
@@ -463,6 +537,61 @@ function renderTrajectoryHtml(t: cli.Trajectory): string {
   }
   function stCls(st) { return st === "error" ? "st-err" : st === "running" ? "st-run" : st === "aborted" ? "st-abt" : "dim2"; }
   function stMark(st) { return st === "error" ? "✗" : st === "running" ? "…" : st === "aborted" ? "⊘" : ""; }
+
+  // ---- live updates from the extension host ----
+  function applyUpdate(msg) {
+    const t = msg.payload;
+    D.title = t.session.title;
+    D.provider = t.session.provider;
+    D.model = t.session.model || "";
+    D.id = t.session.id;
+    D.parent = t.session.parentSessionId ?? null;
+    D.warnings = (t.warnings ?? []).map((w) => w.message ?? "");
+    const st = t.stats ?? {};
+    const tk = st.tokens ?? {};
+    D.stats = {
+      turns: st.turns, records: st.records, steps: st.steps ?? 0,
+      toolCalls: st.toolCalls, toolErrors: st.toolErrors, truncated: st.truncated ?? 0,
+      durationMs: st.durationMs ?? null,
+      tin: tk.input ?? 0, tout: tk.output ?? 0, tcache: tk.cacheRead ?? 0,
+    };
+    D.turns = t.turns.map((turn) => ({
+      index: turn.index, startedAt: turn.startedAt ?? null, durationMs: turn.durationMs ?? null,
+      status: turn.status, steps: turn.steps, records: turn.records,
+      tokens: { i: turn.tokens?.input ?? 0, o: turn.tokens?.output ?? 0 },
+    }));
+    D.rows = t.records.map((r) => ({
+      i: r.index, t: r.turn, s: r.step ?? null, k: r.kind, e: r.event, sm: r.summary,
+      st: r.status, d: r.durationMs ?? null, sa: r.startedAt ?? null, ca: r.completedAt ?? null,
+      u: r.usage ?? null, "in": r.input ?? null, out: r.output ?? null,
+    }));
+    renderHeader();
+
+    // Preserve scroll; keep the user anchored where they were reading.
+    const main = document.getElementById("main");
+    const scroll = window.scrollY;
+    const atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 40;
+    render();
+    if (atBottom) {
+      window.scrollTo(0, document.body.scrollHeight);
+    } else {
+      window.scrollTo(0, scroll);
+    }
+    // Refresh the inspector if its record still exists.
+    if (state.sel != null) {
+      const r = D.rows.find((x) => x.i === state.sel);
+      if (r) {
+        const rowEl = document.querySelector('.rrow[data-i="' + state.sel + '"]');
+        if (rowEl) inspect(r, rowEl);
+      } else {
+        closeInsp();
+      }
+    }
+  }
+  window.addEventListener("message", (e) => {
+    const m = e.data;
+    if (m && m.type === "update" && m.payload) applyUpdate(m);
+  });
 
   render();
 })();
