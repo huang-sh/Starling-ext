@@ -5,9 +5,12 @@ import { formatCompactTokens, shortSessionId } from "../sessionDisplay";
 const PANEL_TITLE = "Session Trajectory";
 
 /**
- * Editor-panel webview rendering the trajectory-v1 ledger: header stats,
- * per-turn sections with records, and an inspector for the selected record
- * (timing, usage, input/output when --full data is present).
+ * Editor-panel webview for the trajectory-v1 ledger.
+ *
+ * Layout: header stats → sticky toolbar (search, kind/status filters, range
+ * slider) → turn sections with a step-proportional timeline gutter and a
+ * record table. Clicking a record opens an inspector drawer with the full
+ * input/output text (when --full data is present).
  */
 export class TrajectoryPanel {
   public static currentPanel: TrajectoryPanel | undefined;
@@ -51,7 +54,6 @@ export class TrajectoryPanel {
   }
 
   private async doUpdate(sessionRef: string, full: boolean): Promise<void> {
-    if (this._panel.visible === false && this._currentSessionId === sessionRef) return;
     this._currentSessionId = sessionRef;
     this._panel.title = PANEL_TITLE;
     try {
@@ -59,7 +61,7 @@ export class TrajectoryPanel {
       this._panel.title = `Trajectory ${shortSessionId(trajectory.session.id)}`;
       this._panel.webview.html = renderTrajectoryHtml(trajectory);
     } catch (err) {
-      this._panel.webview.html = `<body><h2>Error loading trajectory</h2><pre>${escapeHtml(String(err))}</pre></body>`;
+      this._panel.webview.html = errorPage(String(err));
     }
   }
 
@@ -71,234 +73,373 @@ export class TrajectoryPanel {
   }
 }
 
+function errorPage(message: string): string {
+  return `<!DOCTYPE html><html><body><h2>Error loading trajectory</h2><pre>${escapeHtml(message)}</pre></body></html>`;
+}
+
+// ---------------------------------------------------------------------------
+// Data model shipped to the webview
+// ---------------------------------------------------------------------------
+
+interface Row {
+  i: number;          // record index
+  t: number;          // turn
+  s: number | null;   // step
+  k: string;          // kind
+  e: string;          // event
+  sm: string;         // summary
+  st: string;         // status
+  d: number | null;   // durationMs
+  in: string | null;  // input (full only)
+  out: string | null; // output (full only)
+}
+
 function fmtMs(ms?: number | null): string {
-  if (ms == null) return "—";
+  if (ms == null) return "";
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.floor(ms / 3_600_000)}h${Math.floor((ms % 3_600_000) / 60_000)}m`;
 }
 
 function fmtTime(iso?: string | null): string {
-  if (!iso) return "—";
-  return iso.slice(11, 19);
+  return iso ? iso.slice(11, 19) : "—";
 }
 
-const KIND_ICON: Record<string, string> = {
-  user: "👤",
-  assistant: "💬",
-  reasoning: "🧠",
-  tool: "🔧",
-  system: "⚙",
-  compaction: "📦",
-};
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 
-function statusBadge(status: string): string {
-  if (status === "error") return `<span class="badge error">✗ error</span>`;
-  if (status === "running") return `<span class="badge running">…</span>`;
-  if (status === "aborted") return `<span class="badge aborted">aborted</span>`;
-  return "";
+/** JSON-embed: escape so the payload can never close its <script> tag. */
+function embedJson(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
 }
 
 function renderTrajectoryHtml(t: cli.Trajectory): string {
   const s = t.session;
   const stats = t.stats;
   const tokens = stats.tokens ?? {};
-  const byTurn = new Map<number, cli.TrajectoryRecord[]>();
-  for (const r of t.records) {
-    const list = byTurn.get(r.turn) ?? [];
-    list.push(r);
-    byTurn.set(r.turn, list);
-  }
+  const hasDetail = t.detailLevel === "full";
 
-  const turnSections = t.turns
-    .map((turn) => {
-      const rows = (byTurn.get(turn.index) ?? [])
-        .map(
-          (r) => `<tr class="record kind-${r.kind}" data-record="${r.index}">
-  <td class="c-index">#${r.index}</td>
-  <td class="c-step">s${r.step ?? "—"}</td>
-  <td class="c-kind">${KIND_ICON[r.kind] ?? "·"} ${r.kind}</td>
-  <td class="c-event">${escapeHtml(r.event)}</td>
-  <td class="c-summary">${escapeHtml(r.summary || "")}</td>
-  <td class="c-dur">${r.kind === "tool" ? fmtMs(r.durationMs) : ""}</td>
-  <td class="c-status">${statusBadge(r.status)}</td>
-</tr>`
-        )
-        .join("\n");
-      const truncatedNote =
-        (byTurn.get(turn.index) ?? []).length === 0 && turn.records > 0
-          ? `<tr><td colspan="7" class="truncated-note">records truncated — raise --max-records</td></tr>`
-          : "";
-      const turnTokens = turn.tokens ?? {};
-      const tokenBits: string[] = [];
-      if (turnTokens.input || turnTokens.output) {
-        tokenBits.push(`↑${formatCompactTokens(turnTokens.input ?? 0)} ↓${formatCompactTokens(turnTokens.output ?? 0)}`);
-      }
-      return `<section class="turn">
-  <div class="turn-header">
-    <span class="turn-no">Turn ${turn.index}</span>
-    <span class="turn-time">${fmtTime(turn.startedAt)}</span>
-    <span class="turn-dur">${fmtMs(turn.durationMs)}</span>
-    <span class="turn-steps">${turn.steps} steps</span>
-    ${turn.status === "aborted" ? `<span class="badge aborted">aborted</span>` : ""}
-    ${tokenBits.length ? `<span class="turn-tokens">${tokenBits.join(" · ")}</span>` : ""}
-  </div>
-  <table class="ledger">
-    <tbody>${rows}${truncatedNote}</tbody>
-  </table>
-</section>`;
-    })
-    .join("\n");
+  const rows: Row[] = t.records.map((r) => ({
+    i: r.index, t: r.turn, s: r.step ?? null, k: r.kind, e: r.event,
+    sm: r.summary, st: r.status, d: r.durationMs ?? null,
+    "in": r.input ?? null, out: r.output ?? null,
+  }));
 
-  const warnings = (t.warnings ?? [])
-    .map((w) => `<div class="warning">⚠ ${escapeHtml(w.message ?? "")}</div>`)
-    .join("\n");
+  const turns = t.turns.map((turn) => ({
+    index: turn.index,
+    startedAt: turn.startedAt ?? null,
+    durationMs: turn.durationMs ?? null,
+    status: turn.status,
+    steps: turn.steps,
+    records: turn.records,
+    tokens: { i: turn.tokens?.input ?? 0, o: turn.tokens?.output ?? 0 },
+  }));
 
-  const detailRows = t.detailLevel === "full"
-    ? t.records.map((r) => detailJson(r)).join(",\n")
-    : "null";
+  const payload = {
+    title: s.title,
+    provider: s.provider,
+    model: s.model || "",
+    id: s.id,
+    parent: s.parentSessionId ?? null,
+    hasDetail,
+    stats: {
+      turns: stats.turns, records: stats.records, steps: stats.steps ?? 0,
+      toolCalls: stats.toolCalls, toolErrors: stats.toolErrors, truncated: stats.truncated ?? 0,
+      durationMs: stats.durationMs ?? null,
+      tin: tokens.input ?? 0, tout: tokens.output ?? 0, tcache: tokens.cacheRead ?? 0,
+    },
+    turns,
+    rows,
+    warnings: (t.warnings ?? []).map((w) => w.message ?? ""),
+  };
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Trajectory</title>
 <style>
+  :root { --hover: var(--vscode-list-hoverBackground); --line: var(--vscode-widget-border); }
+  * { box-sizing: border-box; }
   body { font-family: var(--vscode-font-family); color: var(--vscode-foreground);
-         background: var(--vscode-editor-background); padding: 16px 20px; }
-  h2 { margin: 0 0 4px; }
-  .subtitle { color: var(--vscode-descriptionForeground); margin-bottom: 12px; word-break: break-all; }
-  .stats { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
-  .stat { padding: 4px 10px; border: 1px solid var(--vscode-widget-border); border-radius: 4px;
-          background: var(--vscode-textBlockQuote-background); font-size: 0.9em; }
-  .stat b { font-weight: 600; }
-  .warning { color: var(--vscode-terminal-ansiYellow); margin: 6px 0; }
-  .parent { color: var(--vscode-descriptionForeground); font-size: 0.9em; }
-  .turn { margin-bottom: 18px; }
-  .turn-header { display: flex; gap: 14px; align-items: baseline; padding: 4px 0;
-                 border-bottom: 2px solid var(--vscode-widget-border); font-size: 0.95em; }
-  .turn-no { font-weight: 600; }
-  .turn-time, .turn-dur, .turn-steps, .turn-tokens { color: var(--vscode-descriptionForeground); }
-  table.ledger { border-collapse: collapse; width: 100%; }
-  .ledger td { padding: 3px 8px; border-bottom: 1px solid color-mix(in srgb, var(--vscode-widget-border) 50%, transparent);
-               vertical-align: top; }
-  .c-index, .c-step { color: var(--vscode-descriptionForeground); white-space: nowrap; width: 1%; }
-  .c-kind { white-space: nowrap; width: 1%; }
-  .c-event { color: var(--vscode-charts-blue, #3794ff); white-space: nowrap; width: 1%; }
-  .c-summary { word-break: break-word; }
-  .c-dur { color: var(--vscode-descriptionForeground); white-space: nowrap; width: 1%; text-align: right; }
-  .c-status { width: 1%; }
-  .truncated-note td { color: var(--vscode-descriptionForeground); font-style: italic; }
-  .kind-tool .c-kind { color: var(--vscode-terminal-ansiYellow); }
-  .kind-error td { }
-  .badge { font-size: 0.85em; padding: 1px 6px; border-radius: 3px; }
-  .badge.error { color: var(--vscode-terminal-ansiRed); }
-  .badge.running { color: var(--vscode-terminal-ansiYellow); }
-  .badge.aborted { color: var(--vscode-terminal-ansiYellow); }
-  .record { cursor: pointer; }
-  .record:hover td { background: var(--vscode-list-hoverBackground); }
-  .record.selected td { background: var(--vscode-list-activeSelectionBackground); }
-  #inspector { position: fixed; right: 0; top: 0; bottom: 0; width: 38%;
-               background: var(--vscode-sideBar-background); border-left: 1px solid var(--vscode-widget-border);
-               padding: 14px 16px; overflow-y: auto; display: none; box-sizing: border-box; }
-  #inspector.open { display: block; }
-  #inspector h3 { margin-top: 0; }
-  #inspector pre { white-space: pre-wrap; word-break: break-word; background: var(--vscode-textBlockQuote-background);
-                   padding: 8px; font-size: 0.85em; }
-  #inspector .kv { display: grid; grid-template-columns: 110px 1fr; gap: 2px 8px; margin: 8px 0; }
-  #inspector .kv dt { color: var(--vscode-descriptionForeground); }
-  #inspector .close { cursor: pointer; float: right; }
-  body.padded { padding-right: 40%; }
+         background: var(--vscode-editor-background); margin: 0; font-size: 13px; }
+  /* Header */
+  header { position: sticky; top: 0; z-index: 30; background: var(--vscode-editor-background);
+           border-bottom: 1px solid var(--line); padding: 10px 16px 8px; }
+  h2 { margin: 0; font-size: 15px; }
+  .meta { color: var(--vscode-descriptionForeground); margin-top: 2px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip { font-size: 11px; padding: 2px 9px; border: 1px solid var(--line); border-radius: 10px;
+          background: var(--vscode-textBlockQuote-background); }
+  .chip b { font-weight: 600; }
+  /* Toolbar */
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  .search { flex: 1 1 220px; min-width: 180px; display: flex; align-items: center; gap: 6px;
+            background: var(--vscode-input-background); border: 1px solid var(--line); border-radius: 4px; padding: 3px 8px; }
+  .search input { flex: 1; background: none; border: none; outline: none; color: var(--vscode-input-foreground); font: inherit; }
+  .filters { display: flex; gap: 4px; flex-wrap: wrap; }
+  .fbtn { font-size: 11px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 10px;
+          background: transparent; color: var(--vscode-descriptionForeground); cursor: pointer; user-select: none; }
+  .fbtn.on { color: var(--vscode-foreground); background: var(--vscode-button-background);
+             border-color: var(--vscode-button-background); }
+  select.mini { background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground);
+                border: 1px solid var(--line); border-radius: 4px; font-size: 11px; padding: 2px 4px; }
+  .range { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--vscode-descriptionForeground); }
+  .range input[type=range] { width: 130px; }
+  .count { font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
+  .warn { color: var(--vscode-terminal-ansiYellow); font-size: 12px; margin: 4px 16px; }
+  /* Timeline ledger */
+  main { padding: 0 16px 40vh; }
+  .turn { margin-top: 14px; }
+  .thead { display: flex; gap: 12px; align-items: baseline; padding: 3px 0;
+           border-bottom: 2px solid var(--line); }
+  .thead .no { font-weight: 600; font-size: 12.5px; }
+  .thead .dim { color: var(--vscode-descriptionForeground); font-size: 11.5px; }
+  .thead .aborted { color: var(--vscode-terminal-ansiYellow); font-size: 11px; }
+  .tgrid { display: grid; grid-template-columns: 34px 1fr 74px 20px; }
+  /* lane column: vertical line with step ticks */
+  .lane { position: relative; }
+  .lane::before { content: ""; position: absolute; left: 10px; top: 0; bottom: 0; width: 1px;
+                  background: var(--line); }
+  .tick { position: relative; margin: 3px 0 3px 22px; font-size: 10.5px; color: var(--vscode-descriptionForeground); }
+  .tick::before { content: ""; position: absolute; left: -16px; top: 50%; width: 9px; height: 1px; background: var(--line); }
+  .rrow { display: flex; align-items: baseline; gap: 8px; padding: 3px 8px; border-radius: 4px; cursor: pointer; }
+  .rrow:hover { background: var(--hover); }
+  .rrow.sel { background: var(--vscode-list-activeSelectionBackground); }
+  .rrow .idx { color: var(--vscode-descriptionForeground); font-size: 10.5px; min-width: 34px; text-align: right; }
+  .ico { font-size: 12px; min-width: 20px; }
+  .ev { color: var(--vscode-charts-blue, #3794ff); font-size: 12px; min-width: 74px; }
+  .sm { flex: 1; color: var(--vscode-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rrow .dur { color: var(--vscode-descriptionForeground); font-size: 11px; min-width: 70px; text-align: right; }
+  .st-err { color: var(--vscode-terminal-ansiRed); font-weight: 600; }
+  .st-run { color: var(--vscode-terminal-ansiYellow); }
+  .st-abt { color: var(--vscode-terminal-ansiYellow); }
+  .k-user .sm { color: var(--vscode-charts-green, #89d185); }
+  .k-reasoning .sm { color: var(--vscode-descriptionForeground); font-style: italic; }
+  .k-system .sm, .k-compaction .sm { color: var(--vscode-descriptionForeground); }
+  .k-tool .ev { color: var(--vscode-terminal-ansiYellow); }
+  .stepgrp { margin: 5px 0 2px; }
+  /* Inspector drawer */
+  #insp { position: fixed; right: -46%; top: 0; bottom: 0; width: 45%; z-index: 40;
+          background: var(--vscode-sideBar-background); border-left: 1px solid var(--line);
+          padding: 14px 18px; overflow-y: auto; transition: right .18s ease; }
+  #insp.open { right: 0; }
+  #insp h3 { margin: 0 0 8px; font-size: 14px; display: flex; justify-content: space-between; }
+  #insp .x { cursor: pointer; color: var(--vscode-descriptionForeground); }
+  .kv { display: grid; grid-template-columns: 96px 1fr; gap: 3px 10px; font-size: 12px; margin: 6px 0 12px; }
+  .kv dt { color: var(--vscode-descriptionForeground); }
+  .kv dd { margin: 0; word-break: break-all; }
+  #insp h4 { margin: 14px 0 4px; font-size: 12.5px; }
+  #insp pre { white-space: pre-wrap; word-break: break-word; margin: 0; padding: 10px;
+              background: var(--vscode-textBlockQuote-background); border-radius: 6px;
+              font-size: 11.5px; line-height: 1.45; max-height: 40vh; overflow: auto; }
+  .hint { color: var(--vscode-descriptionForeground); font-size: 11.5px; font-style: italic; }
+  .empty { color: var(--vscode-descriptionForeground); padding: 30px 0; text-align: center; }
+  body.pushed main, body.pushed header { padding-right: 47%; }
+  mark { background: var(--vscode-editor-findMatchHighlightBackground, #5a5a20); color: inherit; }
 </style>
 </head>
 <body>
-  <h2>${escapeHtml(s.title)}</h2>
-  <div class="subtitle">${escapeHtml(s.provider)} · ${escapeHtml(s.model || "—")} · ${escapeHtml(s.id)}
-    ${s.parentSessionId ? `<span class="parent"><br>nested rollout of ${escapeHtml(s.parentSessionId)}</span>` : ""}
+<header>
+  <h2 id="title"></h2>
+  <div class="meta" id="meta"></div>
+  <div class="chips" id="chips"></div>
+  <div class="toolbar">
+    <div class="search">🔎 <input id="q" placeholder="Search events, summaries, input &amp; output text…" spellcheck="false"></div>
+    <div class="filters" id="kinds"></div>
+    <select class="mini" id="status">
+      <option value="">all status</option>
+      <option value="complete">complete</option>
+      <option value="error">error</option>
+      <option value="running">running</option>
+      <option value="aborted">aborted</option>
+    </select>
+    <div class="range">last <input type="range" id="range" min="10" max="1000" step="10" value="1000"> <span id="rangev">all</span></div>
+    <span class="count" id="count"></span>
   </div>
-  <div class="stats">
-    <span class="stat"><b>${stats.turns}</b> turns</span>
-    <span class="stat"><b>${stats.records}</b> records</span>
-    <span class="stat"><b>${stats.steps ?? "—"}</b> steps</span>
-    <span class="stat"><b>${stats.toolCalls}</b> tools <b>${stats.toolErrors}</b> errors</span>
-    <span class="stat">↑<b>${formatCompactTokens(tokens.input ?? 0)}</b> ↓<b>${formatCompactTokens(tokens.output ?? 0)}</b> R<b>${formatCompactTokens(tokens.cacheRead ?? 0)}</b></span>
-    <span class="stat">${fmtMs(stats.durationMs)}</span>
-  </div>
-  ${warnings}
-  <div id="content">
-  ${turnSections}
-  </div>
-  <div id="inspector">
-    <span class="close" onclick="closeInspector()">✕</span>
-    <div id="inspector-body"></div>
-  </div>
+</header>
+<div class="warn" id="warn"></div>
+<main id="main"></main>
+<div id="insp"><div id="inspbody"></div></div>
+<script id="data" type="application/json">${embedJson(payload)}</script>
 <script>
-  const details = { records: [${detailRows}] };
-  function recordDetail(i) {
-    return details.records.find((r) => r && r.index === i);
-  }
-  function closeInspector() {
-    document.getElementById("inspector").classList.remove("open");
-    document.body.classList.remove("padded");
-    document.querySelectorAll(".record.selected").forEach((el) => el.classList.remove("selected"));
-  }
-  document.querySelectorAll(".record").forEach((row) => {
-    row.addEventListener("click", () => {
-      const i = Number(row.dataset.record);
-      const d = recordDetail(i);
-      document.querySelectorAll(".record.selected").forEach((el) => el.classList.remove("selected"));
-      row.classList.add("selected");
-      const body = document.getElementById("inspector-body");
-      if (d && d.input !== undefined) {
-        body.innerHTML = renderDetail(d);
-        document.getElementById("inspector").classList.add("open");
-        document.body.classList.add("padded");
-      } else {
-        body.innerHTML = renderDetail(d);
-        document.getElementById("inspector").classList.add("open");
-        document.body.classList.add("padded");
-      }
-    });
+(function () {
+  const D = JSON.parse(document.getElementById("data").textContent);
+  const $ = (id) => document.getElementById(id);
+  const state = { q: "", kinds: new Set(), status: "", range: D.rows.length, sel: null };
+  const KINDS = ["user", "assistant", "reasoning", "tool", "system", "compaction"];
+  const ICON = { user: "👤", assistant: "💬", reasoning: "🧠", tool: "🔧", system: "⚙", compaction: "📦" };
+
+  // ---- header ----
+  $("title").textContent = D.title;
+  const meta = $("meta");
+  meta.innerHTML =
+    "<span>" + esc(D.provider) + "</span><span>" + esc(D.model || "—") + "</span>" +
+    "<span style='opacity:.7'>" + esc(D.id) + "</span>" +
+    (D.parent ? "<span>nested rollout of " + esc(D.parent) + "</span>" : "");
+  const S = D.stats;
+  $("chips").innerHTML = [
+    ["turns", S.turns], ["records", S.records], ["steps", S.steps],
+    ["tools", S.toolCalls + (S.toolErrors ? " (" + S.toolErrors + " err)" : "")],
+    ["tokens ↑" + kfmt(S.tin), "↓" + kfmt(S.tout) + " R" + kfmt(S.tcache)],
+    ["wall", dur(S.durationMs)],
+  ].map(([k, v]) => "<span class='chip'><b>" + esc(String(v)) + "</b> " + esc(String(k)) + "</span>").join("");
+  $("warn").textContent = D.warnings.join("  ⚠  ");
+  $("warn").style.display = D.warnings.length ? "" : "none";
+
+  // ---- filter bar ----
+  const kindsBar = $("kinds");
+  KINDS.forEach((k) => {
+    const b = document.createElement("button");
+    b.className = "fbtn on"; b.textContent = (ICON[k] || "·") + " " + k;
+    b.onclick = () => { b.classList.toggle("on");
+      b.classList.contains("on") ? state.kinds.delete(k) : state.kinds.add(k); render(); };
+    state.kinds.add(k);
+    kindsBar.appendChild(b);
   });
-  function esc(s) {
-    return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  $("q").addEventListener("input", (e) => { state.q = e.target.value.trim().toLowerCase(); render(); });
+  $("status").addEventListener("change", (e) => { state.status = e.target.value; render(); });
+  const rg = $("range");
+  rg.addEventListener("input", () => {
+    state.range = Number(rg.value);
+    $("rangev").textContent = rg.value === "1000" ? "all" : String(state.range);
+    render();
+  });
+
+  function match(r) {
+    if (state.kinds.size && !state.kinds.has(r.k)) return false;
+    if (state.status && r.st !== state.status) return false;
+    if (!state.q) return true;
+    return (r.e + " " + r.sm + " " + (r["in"] || "") + " " + (r.out || "")).toLowerCase().includes(state.q);
   }
-  function renderDetail(d) {
-    const rows = [];
-    rows.push(["Index", "#" + d.index], ["Turn / Step", d.turn + " / s" + (d.step ?? "—")],
-              ["Kind", d.kind], ["Event", d.event], ["Status", d.status],
-              ["Started", d.startedAt ?? "—"], ["Completed", d.completedAt ?? "—"],
-              ["Duration", d.durationMs != null ? d.durationMs + "ms" : "—"]);
-    let html = "<dl class='kv'>" + rows.map(([k, v]) => "<dt>" + k + "</dt><dd>" + esc(v) + "</dd>").join("") + "</dl>";
-    if (d.input != null && d.input !== "") html += "<h4>Input</h4><pre>" + esc(d.input) + "</pre>";
-    if (d.output != null && d.output !== "") html += "<h4>Output</h4><pre>" + esc(d.output) + "</pre>";
-    if (d.input == null && d.output == null && d.kind !== "user") {
-      html += "<p class='hint'>Run with Full detail to see input/output text.</p>";
+
+  // ---- render ledger ----
+  function render() {
+    const matched = D.rows.filter(match);
+    // range applies to matched rows, keeping the newest
+    const windowed = matched.length > state.range ? matched.slice(-state.range) : matched;
+    $("count").textContent = windowed.length + " / " + D.rows.length + " shown";
+
+    const byTurn = new Map();
+    for (const r of windowed) { if (!byTurn.has(r.t)) byTurn.set(r.t, []); byTurn.get(r.t).push(r); }
+
+    const main = $("main");
+    main.innerHTML = "";
+    let shown = 0;
+    for (const turn of D.turns) {
+      const rows = byTurn.get(turn.index);
+      if (!rows || !rows.length) continue;
+      shown++;
+      const sec = document.createElement("section");
+      sec.className = "turn";
+      const tk = turn.tokens;
+      const bits = [];
+      if (tk.i || tk.o) bits.push("↑" + kfmt(tk.i) + " ↓" + kfmt(tk.o));
+      const head = document.createElement("div");
+      head.className = "thead";
+      head.innerHTML = "<span class='no'>Turn " + turn.index + "</span>" +
+        "<span class='dim'>" + esc(time(turn.startedAt)) + "</span>" +
+        "<span class='dim'>" + esc(dur(turn.durationMs)) + "</span>" +
+        "<span class='dim'>" + turn.steps + " steps</span>" +
+        (turn.status === "aborted" ? "<span class='aborted'>aborted</span>" : "") +
+        (bits.length ? "<span class='dim'>" + bits.join(" · ") + "</span>" : "");
+      sec.appendChild(head);
+
+      const grid = document.createElement("div");
+      grid.className = "tgrid";
+      const lane = document.createElement("div");
+      const list = document.createElement("div");
+      // Group rows by step for tick marks
+      let lastStep = null;
+      for (const r of rows) {
+        if (r.s !== lastStep) {
+          const tick = document.createElement("div");
+          tick.className = "tick"; tick.textContent = "s" + (r.s ?? "—");
+          lane.appendChild(tick);
+          lastStep = r.s;
+        }
+        const row = document.createElement("div");
+        row.className = "rrow k-" + r.k + (state.sel === r.i ? " sel" : "");
+        const durTxt = r.k === "tool" ? dur(r.d) : "";
+        row.innerHTML = "<span class='idx'>#" + r.i + "</span>" +
+          "<span class='ico'>" + (ICON[r.k] || "·") + "</span>" +
+          "<span class='ev'>" + esc(r.e) + "</span>" +
+          "<span class='sm'>" + esc(r.sm) + "</span>" +
+          "<span class='dur'>" + esc(durTxt) + "</span>" +
+          "<span class='" + stCls(r.st) + "'>" + stMark(r.st) + "</span>";
+        row.onclick = () => inspect(r, row);
+        list.appendChild(row);
+      }
+      // lane column spans the rows visually via grid; the vertical line is
+      // drawn in CSS on .lane::before inside its own column
+      grid.appendChild(lane); grid.appendChild(list);
+      // two more grid cells for alignment (dur/status live inside rows)
+      grid.appendChild(document.createElement("div"));
+      grid.appendChild(document.createElement("div"));
+      sec.appendChild(grid);
+      main.appendChild(sec);
     }
-    return html;
+    if (!shown) {
+      main.innerHTML = "<div class='empty'>No records match the current filters.</div>";
+    }
   }
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeInspector(); });
+
+  // ---- inspector ----
+  function inspect(r, rowEl) {
+    state.sel = r.i;
+    document.querySelectorAll(".rrow.sel").forEach((el) => el.classList.remove("sel"));
+    rowEl.classList.add("sel");
+    const b = $("inspbody");
+    let html = "<h3>" + (ICON[r.k] || "·") + " " + esc(r.k) + " · #" + r.i +
+      "<span class='x' id='inspx'>✕ esc</span></h3>" +
+      kv([["Turn / Step", r.t + " / s" + (r.s ?? "—")], ["Event", r.e], ["Status", r.st],
+          ["Started", r.startedAt || "—"], ["Completed", r.completedAt || "—"],
+          ["Duration", r.d != null ? r.d + "ms" : "—"]]);
+    if (r["in"]) html += "<h4>Input</h4><pre>" + esc(r["in"]) + "</pre>";
+    if (r.out) html += "<h4>Output</h4><pre>" + esc(r.out) + "</pre>";
+    if (!r["in"] && !r.out && !D.hasDetail && r.k !== "user") {
+      html += "<p class='hint'>Reopen with “Full (include input/output text)” to load content.</p>";
+    }
+    b.innerHTML = html;
+    $("insp").classList.add("open");
+    document.body.classList.add("pushed");
+    $("inspx").onclick = closeInsp;
+  }
+  function closeInsp() {
+    $("insp").classList.remove("open");
+    document.body.classList.remove("pushed");
+    state.sel = null;
+    document.querySelectorAll(".rrow.sel").forEach((el) => el.classList.remove("sel"));
+  }
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeInsp(); });
+
+  // ---- helpers ----
+  function esc(s) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function kv(pairs) {
+    return "<dl class='kv'>" + pairs.map(([k, v]) => "<dt>" + esc(k) + "</dt><dd>" + esc(v) + "</dd>").join("") + "</dl>";
+  }
+  function kfmt(n) {
+    n = Number(n) || 0;
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
+    return String(n);
+  }
+  function dur(ms) { if (ms == null) return ""; return fmt(ms); }
+  function fmt(ms) {
+    if (ms < 1000) return ms + "ms";
+    if (ms < 60000) return (ms / 1000).toFixed(1) + "s";
+    return Math.floor(ms / 3600000) + "h" + Math.floor((ms % 3600000) / 60000) + "m";
+  }
+  function time(iso) { return iso ? iso.slice(11, 19) : "—"; }
+  function stCls(st) { return st === "error" ? "st-err" : st === "running" ? "st-run" : st === "aborted" ? "st-abt" : "dim2"; }
+  function stMark(st) { return st === "error" ? "✗" : st === "running" ? "…" : st === "aborted" ? "⊘" : ""; }
+
+  render();
+})();
 </script>
 </body>
 </html>`;
-}
-
-function detailJson(r: cli.TrajectoryRecord): string {
-  return JSON.stringify({
-    index: r.index,
-    turn: r.turn,
-    step: r.step ?? null,
-    kind: r.kind,
-    event: r.event,
-    status: r.status,
-    startedAt: r.startedAt ?? null,
-    completedAt: r.completedAt ?? null,
-    durationMs: r.durationMs ?? null,
-    input: r.input ?? null,
-    output: r.output ?? null,
-  });
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
