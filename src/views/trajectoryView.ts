@@ -18,6 +18,7 @@ export class TrajectoryPanel {
   private _disposables: vscode.Disposable[] = [];
   private _currentSessionId: string | undefined;
   private _pendingUpdate: Promise<void> = Promise.resolve();
+  private _disposed = false;
 
   private constructor(panel: vscode.WebviewPanel) {
     this._panel = panel;
@@ -55,17 +56,25 @@ export class TrajectoryPanel {
 
   private async doUpdate(sessionRef: string, full: boolean): Promise<void> {
     this._currentSessionId = sessionRef;
-    this._panel.title = PANEL_TITLE;
     try {
+      this._panel.title = PANEL_TITLE;
       const trajectory = await cli.getTrajectory(sessionRef, { full, maxRecords: 1000 });
+      // The panel may have been closed while the CLI call was in flight.
+      if (this._disposed) return;
       this._panel.title = `Trajectory ${shortSessionId(trajectory.session.id)}`;
       this._panel.webview.html = renderTrajectoryHtml(trajectory);
     } catch (err) {
-      this._panel.webview.html = errorPage(String(err));
+      if (this._disposed) return;
+      try {
+        this._panel.webview.html = errorPage(String(err));
+      } catch {
+        // Webview became disposed mid-error-render; nothing left to update.
+      }
     }
   }
 
   private dispose(): void {
+    this._disposed = true;
     TrajectoryPanel.currentPanel = undefined;
     this._panel.dispose();
     this._disposables.forEach((d) => d.dispose());
