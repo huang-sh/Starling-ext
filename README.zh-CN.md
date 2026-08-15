@@ -12,16 +12,16 @@ Starling Agent 是 Claude Code、Codex 与 Pi 会话的 VS Code 监控与工作�
 
 它配合 Starling CLI 使用，把本地 agent 历史整理成 Monitor、Catalog、Projects、Models 等视图，并在 VS Code 右侧边栏提供 Starling Chat。
 
-当前版本：**0.2.0**
+当前版本：**0.3.0**
 
 - VS Code Marketplace：[`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
-- GitHub Release：[`v0.2.0`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.2.0)
+- GitHub Release：[`v0.3.0`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.3.0)
 - CLI 包：[`starling-ai`](https://www.npmjs.com/package/starling-ai)
 
 GitHub Release 会附带打包好的 VSIX：
 
 ```text
-starling-ai-0.2.0.vsix
+starling-ai-0.3.0.vsix
 ```
 
 ## 安装要求
@@ -50,7 +50,7 @@ npm install -g starling-ai
 
 也可以通过提示直接打开 `starling.cliPath` 设置。
 
-Starling Chat 需要 Node.js 22.19 或更新版本上的最新版 `starling-ai` npm 包。CLI 固定包含 Pi SDK，并由 Starling Host 直接加载，不会执行 `pi --mode rpc`，因此聊天功能不需要单独安装 Pi CLI。VS Code 扩展本身不内置或加载 SDK。
+Starling Chat 需要 Node.js 22.19 或更新版本上的 `starling-ai` npm 包（0.3.0 或更新）。CLI 捆绑 Pi SDK 依赖（`>=0.82.0`）并由 Starling Host 直接加载，不会执行 `pi --mode rpc`，因此聊天功能不需要单独安装 Pi CLI。VS Code 扩展本身不内置或加载 SDK。
 
 ## 视图
 
@@ -127,6 +127,19 @@ Starling Chat 需要 Node.js 22.19 或更新版本上的最新版 `starling-ai` 
 
 Monitor 是 VS Code 里的 `starling top`。它监控 pinned、active 和 recent 的 Claude Code、Codex 与 Pi 会话，显示状态、上下文、token、CPU、内存和当前任务。
 
+### Session Trajectory
+
+在 Monitor 或 Catalog 中右键会话选择 **Show Session Trajectory**，会在编辑器 webview 中打开 turn 粒度的 trajectory 台账。支持 Claude Code、Codex 与 Pi 会话：
+
+- 按 turn 分区，带 step 刻度、时长、token 用量与 aborted 标记。
+- record 台账：用户消息、assistant 文本、reasoning、带耗时与错误状态的工具调用、模型切换与 compaction。
+- 过滤：跨 event/摘要/工具输入输出的全文搜索、按 kind 切换、状态过滤、"最近 N 条"范围滑块。
+- 点击 record 打开 inspector，查看完整输入/输出文本（默认以 Full 级别加载）。
+
+该视图由 `starling trajectory --json --full` 提供数据，与 CLI 的 trajectory-v1 数据一致。
+
+### Monitor 详情
+
 Monitor 视图由 `starling top --json` 提供数据，并在后台刷新。它会把会话分组为：
 
 - Needs attention：等待用户输入或确认的会话。
@@ -153,6 +166,7 @@ Linux 上，Pi 启动后会从进程列表隐藏一次性 CLI 参数。通过 St
 
 - 恢复会话。
 - 查看会话详情。
+- 查看会话 trajectory。
 - Pin 到 catalog。
 - 在新的 VS Code 窗口打开项目。
 - 复制项目路径。
@@ -175,6 +189,7 @@ Linux 上，Pi 启动后会从进程列表隐藏一次性 CLI 参数。通过 St
 - `Starling: Set Monitor Sort`
 - `Starling: Resume Session`
 - `Starling: Show Session Details`
+- `Starling: Show Session Trajectory`
 - `Starling: Pin Session`
 - `Starling: Pin to Catalog`
 - `Starling: Remove Pin`

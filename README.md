@@ -12,16 +12,16 @@ VS Code monitor and workspace for Claude Code, Codex, and Pi sessions: live stat
 
 It works with the Starling CLI and turns local agent history into focused Monitor, Catalog, Projects, and Models views, plus Starling Chat in VS Code's right sidebar.
 
-Current release: **0.2.0**
+Current release: **0.3.0**
 
 - VS Code Marketplace: [`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
-- GitHub Release: [`v0.2.0`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.2.0)
+- GitHub Release: [`v0.3.0`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.3.0)
 - CLI package: [`starling-ai`](https://www.npmjs.com/package/starling-ai)
 
 The GitHub release includes the packaged VSIX:
 
 ```text
-starling-ai-0.2.0.vsix
+starling-ai-0.3.0.vsix
 ```
 
 ## Requirements
@@ -50,7 +50,7 @@ npm install -g starling-ai
 
 You can also use the prompt to open the `starling.cliPath` setting.
 
-Starling Chat requires the current `starling-ai` npm package on Node.js 22.19 or newer. The CLI includes a fixed Pi SDK dependency and hosts it directly; it does not launch `pi --mode rpc`, so a separate Pi CLI installation is unnecessary for Chat. The VS Code extension itself does not bundle or import the SDK.
+Starling Chat requires the current `starling-ai` npm package (0.3.0 or newer) on Node.js 22.19 or newer. The CLI bundles the Pi SDK dependency (range `>=0.82.0`) and hosts it directly; it does not launch `pi --mode rpc`, so a separate Pi CLI installation is unnecessary for Chat. The VS Code extension itself does not bundle or import the SDK.
 
 ## Views
 
@@ -125,6 +125,19 @@ Right-click a model profile to:
 
 Monitor pinned, active, and recent Claude Code, Codex, and Pi sessions with live status, context, token, CPU, memory, and task details.
 
+### Session Trajectory
+
+Right-click any session in Monitor or Catalog and choose **Show Session Trajectory** to open a turn-aware trajectory ledger in an editor webview. It works for Claude Code, Codex, and Pi sessions and shows:
+
+- Per-turn sections with step ticks, durations, token usage, and aborted markers.
+- A record ledger: user messages, assistant text, reasoning, tool calls with timing and error status, model changes, and compactions.
+- Filters: full-text search across events, summaries, and tool input/output; per-kind toggles; status filter; and a "last N records" range slider.
+- A click-to-open inspector with the full input/output text of each record (loaded in Full detail by default).
+
+The view is backed by `starling trajectory --json --full` and reflects the same trajectory-v1 data as the CLI.
+
+### Monitor details
+
 The Monitor view is backed by `starling top --json` and refreshes in the background. It groups sessions into:
 
 - Needs attention: sessions waiting for user input or approval.
@@ -151,6 +164,7 @@ Right-click a session to:
 
 - Resume the session.
 - Show session details.
+- Show the session trajectory.
 - Pin it to a catalog.
 - Open its project in a new VS Code window.
 - Copy the project path.
@@ -173,6 +187,7 @@ Common commands:
 - `Starling: Set Monitor Sort`
 - `Starling: Resume Session`
 - `Starling: Show Session Details`
+- `Starling: Show Session Trajectory`
 - `Starling: Pin Session`
 - `Starling: Pin to Catalog`
 - `Starling: Remove Pin`
