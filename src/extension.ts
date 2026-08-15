@@ -470,6 +470,21 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand("starling.sessionTrajectory", async (node: unknown) => {
+      const sessionId = await pickSessionId(node);
+      if (!sessionId) return;
+      const full = await vscode.window.showQuickPick(
+        ["Summary (bounded previews)", "Full (include input/output text)"],
+        { placeHolder: "Trajectory detail level" }
+      );
+      if (!full) return;
+      await runCliCommandOutput("Starling: trajectory", () =>
+        cli.getTrajectoryText(sessionId, { full: full.startsWith("Full"), maxRecords: 1000 })
+      );
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand("starling.sessionIndexStatus", async () => {
       await runCliCommandOutput("Starling: session index status", () => cli.sessionIndexStatusText());
     })

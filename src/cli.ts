@@ -898,6 +898,13 @@ export async function getSessionText(id: string): Promise<string> {
   return execStarlingRaw(["session", "show", id]);
 }
 
+export async function getTrajectoryText(id: string, opts: { full?: boolean; maxRecords?: number } = {}): Promise<string> {
+  const args = ["trajectory", id];
+  if (opts.full) args.push("--full");
+  if (opts.maxRecords != null) args.push("--max-records", String(opts.maxRecords));
+  return execStarlingRaw(args, { timeout: DEFAULT_JSON_TIMEOUT });
+}
+
 export async function updateSessionTitle(sessionId: string, title: string): Promise<string> {
   clearCliCache();
   return execStarlingRaw(["session", "meta", sessionId, "--title", title], { timeout: DEFAULT_TEXT_TIMEOUT });
