@@ -408,14 +408,8 @@ function renderTrajectoryHtml(t: cli.Trajectory): string {
     if (r.out) html += "<h4>Output</h4><pre>" + esc(r.out) + "</pre>";
     if (r.sm === "(encrypted reasoning)") {
       html += "<p class='hint'>Codex encrypts reasoning; only its presence is recorded.</p>";
-    } else if (!r["in"] && !r.out && r.k !== "user" && r.k !== "system" && r.k !== "assistant") {
-      if (D.hasDetail) {
-        html += "<p class='hint'>This record has no captured input/output text.</p>";
-      } else {
-        html += "<p class='hint'>Summary mode hides content. Reopen with “Full (include input/output text)” to load it.</p>";
-      }
-    } else if (!r["in"] && !r.out && !D.hasDetail && (r.k === "user")) {
-      html += "<p class='hint'>Summary mode hides content. Reopen with “Full (include input/output text)” to load it.</p>";
+    } else if (!r["in"] && !r.out && !["user", "system", "assistant"].includes(r.k)) {
+      html += "<p class='hint'>This record has no captured input/output text.</p>";
     }
     b.innerHTML = html;
     $("insp").classList.add("open");

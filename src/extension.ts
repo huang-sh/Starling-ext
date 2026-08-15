@@ -474,13 +474,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("starling.sessionTrajectory", async (node: unknown) => {
       const sessionId = await pickSessionId(node);
       if (!sessionId) return;
-      const detail = await vscode.window.showQuickPick(
-        ["Summary (bounded previews)", "Full (include input/output text)"],
-        { placeHolder: "Trajectory detail level" }
-      );
-      if (!detail) return;
       try {
-        await TrajectoryPanel.createOrShow(sessionId, detail.startsWith("Full"));
+        await TrajectoryPanel.createOrShow(sessionId, true);
       } catch (err) {
         if (await maybePromptStarlingInstall(err)) return;
         const message = `Starling: trajectory failed: ${errorMessage(err)}`;
