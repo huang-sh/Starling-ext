@@ -389,7 +389,7 @@ function presentState(state: Record<string, unknown>): Record<string, string> {
   };
 }
 
-function chatHtml(webview: vscode.Webview): string {
+export function chatHtml(webview: Pick<vscode.Webview, "cspSource">): string {
   const nonce = randomBytes(18).toString("base64");
   const csp = [
     "default-src 'none'",
@@ -404,60 +404,273 @@ function chatHtml(webview: vscode.Webview): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <style nonce="${nonce}">
-    :root { color-scheme: light dark; }
+    :root {
+      color-scheme: light dark;
+      --chat-bg: var(--vscode-sideBar-background, var(--vscode-editor-background));
+      --surface: var(--vscode-editorWidget-background, var(--vscode-input-background));
+      --border: var(--vscode-widget-border, var(--vscode-panel-border));
+      --muted: var(--vscode-descriptionForeground);
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; height: 100vh; color: var(--vscode-foreground); background: var(--vscode-sideBar-background); font: var(--vscode-font-size)/1.45 var(--vscode-font-family); }
-    #app { height: 100%; display: grid; grid-template-rows: auto 1fr auto; }
-    header { padding: 8px 10px; border-bottom: 1px solid var(--vscode-panel-border); display: grid; gap: 7px; }
-    .toolbar { display: flex; align-items: center; gap: 6px; }
-    button { border: 1px solid var(--vscode-button-border, transparent); border-radius: 3px; padding: 4px 9px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); cursor: pointer; }
-    button:hover { background: var(--vscode-button-hoverBackground); }
-    button.secondary { color: var(--vscode-foreground); background: var(--vscode-button-secondaryBackground); }
-    button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
-    #status { margin-left: auto; color: var(--vscode-descriptionForeground); font-size: 0.9em; }
-    #meta { color: var(--vscode-descriptionForeground); font-size: 0.85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    #messages { padding: 12px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-    .message { border-radius: 6px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
-    .user { align-self: flex-end; max-width: 92%; background: var(--vscode-inputOption-activeBackground); border: 1px solid var(--vscode-inputOption-activeBorder); }
-    .assistant { align-self: stretch; background: var(--vscode-editor-background); border: 1px solid var(--vscode-panel-border); }
-    .thinking { color: var(--vscode-descriptionForeground); font-style: italic; border-left: 2px solid var(--vscode-focusBorder); padding-left: 8px; margin-bottom: 7px; white-space: pre-wrap; }
-    .tool { align-self: stretch; background: var(--vscode-textCodeBlock-background); border-left: 3px solid var(--vscode-charts-blue); padding: 7px 9px; }
-    .tool.error { border-left-color: var(--vscode-errorForeground); }
-    .tool-title { font-weight: 600; margin-bottom: 4px; }
-    .tool-body { color: var(--vscode-descriptionForeground); font-family: var(--vscode-editor-font-family); white-space: pre-wrap; max-height: 220px; overflow: auto; }
-    .error-message { color: var(--vscode-errorForeground); border: 1px solid var(--vscode-errorForeground); }
-    footer { border-top: 1px solid var(--vscode-panel-border); padding: 8px 10px; display: grid; gap: 6px; }
-    textarea { width: 100%; min-height: 68px; max-height: 220px; resize: vertical; padding: 7px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); font: inherit; }
-    textarea:focus { outline: 1px solid var(--vscode-focusBorder); }
-    .send-row { display: flex; justify-content: flex-end; gap: 6px; }
+    [hidden] { display: none !important; }
+    body {
+      margin: 0;
+      height: 100vh;
+      overflow: hidden;
+      color: var(--vscode-foreground);
+      background: var(--chat-bg);
+      font: var(--vscode-font-size)/1.5 var(--vscode-font-family);
+    }
+    button, textarea { font: inherit; }
+    button { color: inherit; }
+    #app { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+    .thread-header {
+      min-width: 0;
+      min-height: 48px;
+      padding: 8px 10px 6px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .thread-heading { min-width: 0; flex: 1; display: flex; align-items: center; gap: 8px; }
+    .brand-mark {
+      width: 24px;
+      height: 24px;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--vscode-textLink-foreground);
+      background: var(--surface);
+      font-size: 13px;
+    }
+    .thread-copy { min-width: 0; }
+    #thread-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+    #status { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
+    .status-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--vscode-testing-iconPassed, var(--vscode-charts-green)); }
+    body.is-busy .status-dot { background: var(--vscode-progressBar-background); animation: pulse 1.4s ease-in-out infinite; }
+    #status.error .status-dot { background: var(--vscode-errorForeground); }
+    .toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
+    .icon-button {
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 7px;
+      color: var(--vscode-icon-foreground, var(--vscode-foreground));
+      background: transparent;
+      cursor: pointer;
+    }
+    .icon-button:hover { background: var(--vscode-toolbar-hoverBackground); }
+    .icon-button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+    .icon-button svg { width: 16px; height: 16px; }
+    #messages {
+      min-height: 0;
+      padding: 10px 12px 20px;
+      overflow-y: auto;
+      scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .empty-state {
+      width: 100%;
+      max-width: 330px;
+      margin: auto;
+      padding: 24px 12px 18vh;
+      text-align: center;
+      color: var(--muted);
+    }
+    .empty-mark {
+      width: 42px;
+      height: 42px;
+      margin: 0 auto 15px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      color: var(--vscode-textLink-foreground);
+      background: var(--surface);
+      box-shadow: 0 6px 20px color-mix(in srgb, var(--vscode-widget-shadow) 22%, transparent);
+      font-size: 20px;
+    }
+    .empty-state h1 { margin: 0 0 7px; color: var(--vscode-foreground); font-size: 17px; line-height: 1.3; font-weight: 600; }
+    .empty-state p { margin: 0; font-size: 12px; line-height: 1.55; }
+    .conversation-item { width: 100%; max-width: 760px; margin-inline: auto; overflow-wrap: anywhere; }
+    .message { white-space: pre-wrap; }
+    .user {
+      align-self: flex-end;
+      width: fit-content;
+      max-width: min(88%, 680px);
+      margin-left: auto;
+      padding: 9px 12px;
+      border: 1px solid var(--vscode-chat-requestBorder, transparent);
+      border-radius: 15px 15px 4px 15px;
+      background: var(--vscode-chat-requestBackground, var(--vscode-input-background));
+    }
+    .assistant { align-self: stretch; padding: 0 2px; }
+    .message-label { margin-bottom: 6px; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 600; }
+    .message-label .spark { color: var(--vscode-textLink-foreground); font-size: 12px; }
+    .message-body { line-height: 1.58; }
+    .thinking {
+      margin: 0 0 10px;
+      color: var(--muted);
+      border-left: 2px solid var(--border);
+      padding-left: 9px;
+      font-size: 12px;
+    }
+    .thinking-summary { padding: 1px 0; cursor: pointer; user-select: none; }
+    .thinking-summary::marker { color: var(--muted); }
+    .thinking-body { margin-top: 6px; max-height: 180px; overflow: auto; white-space: pre-wrap; }
+    .tool {
+      align-self: stretch;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--surface) 72%, transparent);
+      overflow: hidden;
+    }
+    .tool-summary {
+      min-height: 34px;
+      padding: 7px 9px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+    }
+    .tool-summary::-webkit-details-marker { display: none; }
+    .tool-icon { width: 17px; height: 17px; display: grid; place-items: center; border-radius: 5px; background: var(--vscode-textCodeBlock-background); color: var(--muted); font: 600 13px var(--vscode-editor-font-family); }
+    .tool-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+    .tool-state { color: var(--muted); font-size: 11px; }
+    .tool.running .tool-state { color: var(--vscode-textLink-foreground); }
+    .tool.error .tool-state { color: var(--vscode-errorForeground); }
+    .tool-body {
+      margin: 0;
+      padding: 9px 10px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      background: var(--vscode-textCodeBlock-background);
+      font: 11px/1.5 var(--vscode-editor-font-family);
+      white-space: pre-wrap;
+      max-height: 240px;
+      overflow: auto;
+    }
+    .error-message { padding: 10px; border: 1px solid color-mix(in srgb, var(--vscode-errorForeground) 55%, transparent); border-radius: 10px; color: var(--vscode-errorForeground); background: color-mix(in srgb, var(--vscode-errorForeground) 8%, transparent); }
+    .composer-wrap { padding: 20px 10px 8px; background: linear-gradient(to bottom, transparent, var(--chat-bg) 18px); }
+    .composer-shell {
+      max-width: 760px;
+      margin-inline: auto;
+      padding: 8px 8px 7px 11px;
+      border: 1px solid var(--vscode-input-border, var(--border));
+      border-radius: 16px;
+      background: var(--vscode-input-background);
+      box-shadow: 0 5px 18px color-mix(in srgb, var(--vscode-widget-shadow) 24%, transparent);
+    }
+    .composer-shell:focus-within { border-color: var(--vscode-focusBorder); box-shadow: 0 0 0 1px var(--vscode-focusBorder); }
+    textarea {
+      width: 100%;
+      height: 44px;
+      min-height: 44px;
+      max-height: 160px;
+      padding: 4px 5px 6px 0;
+      resize: none;
+      overflow-y: auto;
+      border: 0;
+      outline: 0;
+      color: var(--vscode-input-foreground);
+      background: transparent;
+      line-height: 1.5;
+    }
+    textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
+    textarea:disabled { opacity: .65; }
+    .composer-row { min-height: 28px; display: flex; align-items: center; gap: 8px; }
+    .context { min-width: 0; flex: 1; display: flex; align-items: center; gap: 5px; overflow: hidden; }
+    .context-pill { max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
+    .context-pill + .context-pill::before { content: '·'; margin-right: 5px; }
+    .composer-actions { display: flex; align-items: center; gap: 5px; }
+    .composer-action {
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    .composer-action svg { width: 15px; height: 15px; }
+    #stop { color: var(--vscode-foreground); background: var(--vscode-button-secondaryBackground); }
+    #stop:hover { background: var(--vscode-button-secondaryHoverBackground); }
+    #send { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+    #send:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
+    #send:disabled { cursor: default; opacity: .42; }
+    .composer-action:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+    @keyframes pulse { 50% { opacity: .35; transform: scale(.8); } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
   </style>
 </head>
 <body>
   <div id="app">
-    <header>
-      <div class="toolbar">
-        <button id="new" class="secondary" type="button">New</button>
-        <button id="history" class="secondary" type="button">History</button>
-        <span id="status">Starting…</span>
+    <header class="thread-header">
+      <div class="thread-heading">
+        <span class="brand-mark" aria-hidden="true">✦</span>
+        <div class="thread-copy">
+          <div id="thread-name" title="New chat">New chat</div>
+          <div id="status" role="status" aria-live="polite"><span class="status-dot" aria-hidden="true"></span><span id="status-label">Starting…</span></div>
+        </div>
       </div>
-      <div id="meta">Pi</div>
+      <div class="toolbar">
+        <button id="history" class="icon-button" type="button" aria-label="Chat history" title="Chat history">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>
+        </button>
+        <button id="new" class="icon-button" type="button" aria-label="New chat" title="New chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
     </header>
-    <main id="messages" aria-live="polite"></main>
-    <footer>
-      <textarea id="input" aria-label="Message Pi" placeholder="Ask Pi… (Shift+Enter for a new line)" disabled></textarea>
-      <div class="send-row">
-        <button id="stop" class="secondary" type="button">Stop</button>
-        <button id="send" type="button" disabled>Send</button>
+    <main id="messages" aria-live="polite">
+      <section id="empty-state" class="empty-state">
+        <div class="empty-mark" aria-hidden="true">✦</div>
+        <h1>What are we working on?</h1>
+        <p>Ask Starling to build, review, or explain code in this workspace.</p>
+      </section>
+    </main>
+    <footer class="composer-wrap">
+      <div class="composer-shell">
+        <textarea id="input" rows="1" aria-label="Message Starling" placeholder="Ask Starling to build, review, or explain…" disabled></textarea>
+        <div class="composer-row">
+          <div class="context" aria-label="Chat context">
+            <span id="model" class="context-pill">Pi</span>
+            <span id="thinking-level" class="context-pill" hidden></span>
+          </div>
+          <div class="composer-actions">
+            <button id="stop" class="composer-action" type="button" aria-label="Stop agent" title="Stop agent" hidden>
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
+            </button>
+            <button id="send" class="composer-action" type="button" aria-label="Send message" title="Send message" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6.5 10.5 12 5l5.5 5.5"/></svg>
+            </button>
+          </div>
+        </div>
       </div>
     </footer>
   </div>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const messages = document.getElementById('messages');
+    const emptyState = document.getElementById('empty-state');
     const input = document.getElementById('input');
     const send = document.getElementById('send');
+    const stop = document.getElementById('stop');
     const status = document.getElementById('status');
-    const meta = document.getElementById('meta');
+    const statusLabel = document.getElementById('status-label');
+    const threadName = document.getElementById('thread-name');
+    const model = document.getElementById('model');
+    const thinkingLevel = document.getElementById('thinking-level');
     const tools = new Map();
     let busy = false;
     let ready = false;
@@ -466,42 +679,94 @@ function chatHtml(webview: vscode.Webview): string {
     let assistantThinking = null;
 
     function scrollDown() { messages.scrollTop = messages.scrollHeight; }
+    function resizeInput() {
+      input.style.height = '0';
+      input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+    }
     function node(tag, className, text) {
       const element = document.createElement(tag);
       if (className) element.className = className;
       if (text !== undefined) element.textContent = String(text);
       return element;
     }
+    function setEmptyState() {
+      emptyState.hidden = Boolean(messages.querySelector('.conversation-item'));
+    }
+    function clearMessages() {
+      messages.replaceChildren(emptyState);
+      tools.clear();
+      assistant = assistantText = assistantThinking = null;
+      setEmptyState();
+    }
+    function thinkingBlock(text, open) {
+      const details = node('details', 'thinking');
+      details.open = Boolean(open);
+      details.append(node('summary', 'thinking-summary', 'Thought process'), node('div', 'thinking-body', text || ''));
+      return details;
+    }
+    function toolBlock(name, text, state, isError, open) {
+      const box = node('details', 'conversation-item tool' + (isError ? ' error' : '') + (state === 'Running' ? ' running' : ''));
+      box.open = Boolean(open);
+      const summary = node('summary', 'tool-summary');
+      summary.append(node('span', 'tool-icon', '>'), node('span', 'tool-title', name || 'Tool'), node('span', 'tool-state', state));
+      const body = node('pre', 'tool-body', text || '');
+      box.append(summary, body);
+      return { box, body, state: summary.lastElementChild };
+    }
     function addMessage(role, text, thinking, toolName, isError) {
       if (role === 'tool') {
-        const box = node('section', 'tool' + (isError ? ' error' : ''));
-        box.append(node('div', 'tool-title', toolName || 'Tool'), node('div', 'tool-body', text || ''));
-        messages.append(box);
-        return;
+        const tool = toolBlock(toolName, text, isError ? 'Failed' : 'Done', isError, Boolean(isError));
+        messages.append(tool.box);
+        setEmptyState();
+        return tool.box;
       }
-      const box = node('section', 'message ' + role);
-      if (thinking) box.append(node('div', 'thinking', thinking));
-      box.append(node('div', '', text || ''));
+      const box = node('section', 'conversation-item message ' + role);
+      if (role === 'assistant') {
+        const label = node('div', 'message-label');
+        label.append(node('span', 'spark', '✦'), document.createTextNode('Starling'));
+        box.append(label);
+        if (thinking) box.append(thinkingBlock(thinking, false));
+      }
+      box.append(node('div', 'message-body', text || ''));
       messages.append(box);
+      setEmptyState();
+      return box;
     }
     function ensureAssistant() {
       if (assistant) return;
-      assistant = node('section', 'message assistant');
-      assistantThinking = node('div', 'thinking', '');
+      assistant = node('section', 'conversation-item message assistant');
+      const label = node('div', 'message-label');
+      label.append(node('span', 'spark', '✦'), document.createTextNode('Starling'));
+      assistantThinking = thinkingBlock('', true);
       assistantThinking.hidden = true;
-      assistantText = node('div', '', '');
-      assistant.append(assistantThinking, assistantText);
+      assistantText = node('div', 'message-body', '');
+      assistant.append(label, assistantThinking, assistantText);
       messages.append(assistant);
+      setEmptyState();
+    }
+    function refreshComposer() {
+      const actionLabel = busy ? 'Queue follow-up' : 'Send message';
+      send.disabled = !ready || !input.value.trim();
+      send.setAttribute('aria-label', actionLabel);
+      send.title = actionLabel;
+      stop.hidden = !busy;
+    }
+    function setThreadTitle(value, file) {
+      const title = String(value || 'New chat');
+      threadName.textContent = title;
+      threadName.title = String(file || title);
     }
     function setBusy(next, label) {
       busy = Boolean(next);
-      send.textContent = busy ? 'Queue follow-up' : 'Send';
-      status.textContent = label || (busy ? 'Agent is working…' : 'Ready');
+      document.body.classList.toggle('is-busy', busy);
+      status.classList.toggle('error', label === 'Error');
+      statusLabel.textContent = label || (busy ? 'Agent is working…' : 'Ready');
+      refreshComposer();
     }
     function setReady(next) {
       ready = Boolean(next);
       input.disabled = !ready;
-      send.disabled = !ready;
+      refreshComposer();
       if (ready) input.focus();
     }
     function submit() {
@@ -510,29 +775,37 @@ function chatHtml(webview: vscode.Webview): string {
       if (!text) return;
       addMessage('user', text);
       input.value = '';
+      resizeInput();
+      refreshComposer();
       if (!busy) assistant = assistantText = assistantThinking = null;
       scrollDown();
       vscode.postMessage({ type: 'send', text });
     }
     document.getElementById('new').addEventListener('click', () => vscode.postMessage({ type: 'newSession' }));
     document.getElementById('history').addEventListener('click', () => vscode.postMessage({ type: 'history' }));
-    document.getElementById('stop').addEventListener('click', () => vscode.postMessage({ type: 'abort' }));
+    stop.addEventListener('click', () => vscode.postMessage({ type: 'abort' }));
     send.addEventListener('click', submit);
+    input.addEventListener('input', () => { resizeInput(); refreshComposer(); });
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submit(); }
     });
     window.addEventListener('message', (event) => {
       const value = event.data || {};
       if (value.type === 'reset') {
-        messages.replaceChildren(); tools.clear(); assistant = assistantText = assistantThinking = null;
+        clearMessages();
+        setThreadTitle('New chat');
+        model.textContent = 'Pi';
+        thinkingLevel.hidden = true;
         setReady(false);
         setBusy(false, value.status || 'Starting…');
       } else if (value.type === 'hydrate') {
-        messages.replaceChildren(); tools.clear(); assistant = assistantText = assistantThinking = null;
+        clearMessages();
         for (const item of value.messages || []) addMessage(item.role, item.text, item.thinking, item.toolName, item.isError);
         const state = value.state || {};
-        const parts = [state.model, state.thinking && ('thinking: ' + state.thinking), state.session].filter(Boolean);
-        meta.textContent = parts.join(' • ') || 'Pi';
+        model.textContent = String(state.model || 'Pi');
+        thinkingLevel.textContent = state.thinking ? 'thinking ' + state.thinking : '';
+        thinkingLevel.hidden = !state.thinking;
+        setThreadTitle(state.session, state.sessionFile);
         setReady(true);
       } else if (value.type === 'busy') {
         setBusy(value.busy, value.status);
@@ -544,28 +817,41 @@ function chatHtml(webview: vscode.Webview): string {
         ensureAssistant();
         if (value.kind === 'thinking') {
           assistantThinking.hidden = false;
-          assistantThinking.textContent += String(value.delta || '');
-        } else assistantText.textContent += String(value.delta || '');
+          assistantThinking.open = true;
+          assistantThinking.lastElementChild.textContent += String(value.delta || '');
+        } else {
+          assistantThinking.open = false;
+          assistantText.textContent += String(value.delta || '');
+        }
       } else if (value.type === 'toolStart') {
-        const box = node('section', 'tool');
-        const body = node('div', 'tool-body', value.text || '');
-        box.append(node('div', 'tool-title', value.name || 'Tool'), body);
-        tools.set(String(value.id), { box, body }); messages.append(box);
+        const tool = toolBlock(value.name, value.text, 'Running', false, true);
+        tools.set(String(value.id), tool);
+        messages.append(tool.box);
+        setEmptyState();
       } else if (value.type === 'toolUpdate' || value.type === 'toolEnd') {
         const tool = tools.get(String(value.id));
-        if (tool) { tool.body.textContent = String(value.text || ''); if (value.isError) tool.box.classList.add('error'); }
+        if (tool) {
+          tool.body.textContent = String(value.text || '');
+          if (value.type === 'toolEnd') {
+            tool.box.classList.remove('running');
+            tool.box.classList.toggle('error', Boolean(value.isError));
+            tool.state.textContent = value.isError ? 'Failed' : 'Done';
+            tool.box.open = Boolean(value.isError);
+          }
+        }
       } else if (value.type === 'sessionName') {
-        meta.textContent = String(value.value || 'Pi');
+        setThreadTitle(value.value);
       } else if (value.type === 'status') {
         setBusy(value.busy, value.status);
         if (typeof value.ready === 'boolean') setReady(value.ready);
       } else if (value.type === 'error') {
-        addMessage('assistant', value.message || 'Starling chat error');
-        messages.lastElementChild.classList.add('error-message');
+        addMessage('assistant', value.message || 'Starling chat error').classList.add('error-message');
         setBusy(false, 'Error');
       }
       scrollDown();
     });
+    resizeInput();
+    refreshComposer();
     vscode.postMessage({ type: 'ready' });
   </script>
 </body>

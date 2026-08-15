@@ -233,6 +233,11 @@
         "title": "Show Session"
       },
       {
+        "command": "starling.sessionTrajectory",
+        "title": "Show Session Trajectory",
+        "category": "Starling"
+      },
+      {
         "command": "starling.sessionIndexStatus",
         "category": "Starling",
         "title": "Session Index Status"
@@ -448,6 +453,11 @@
           "group": "sessionContext@2"
         },
         {
+          "command": "starling.sessionTrajectory",
+          "when": "viewItem == session-unpinned || viewItem == session-pinned || viewItem == project-session",
+          "group": "sessionContext@3"
+        },
+        {
           "command": "starling.editSessionTitle",
           "when": "viewItem == session-unpinned || viewItem == session-pinned || viewItem == project-session",
           "group": "sessionContext@3"
@@ -578,6 +588,11 @@
           "group": "catalogSession@2"
         },
         {
+          "command": "starling.sessionTrajectory",
+          "when": "viewItem == session-pin",
+          "group": "catalogSession@3"
+        },
+        {
           "command": "starling.editSessionTitle",
           "when": "viewItem == session-pin",
           "group": "catalogSession@3"
@@ -614,21 +629,6 @@
         }
       ],
       "view/title": [
-        {
-          "command": "starling.chatNewSession",
-          "when": "view == starling-pi-chat",
-          "group": "navigation@1"
-        },
-        {
-          "command": "starling.chatResumeSession",
-          "when": "view == starling-pi-chat",
-          "group": "navigation@2"
-        },
-        {
-          "command": "starling.chatStop",
-          "when": "view == starling-pi-chat",
-          "group": "navigation@3"
-        },
         {
           "command": "starling.catalogCreate",
           "when": "view == starling-spaces",
