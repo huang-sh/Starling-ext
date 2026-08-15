@@ -12,16 +12,16 @@ VS Code monitor and workspace for Claude Code, Codex, and Pi sessions: live stat
 
 It works with the Starling CLI and turns local agent history into focused Monitor, Catalog, Projects, and Models views, plus Starling Chat in VS Code's right sidebar.
 
-Current release: **0.3.0**
+Current release: **0.3.1**
 
 - VS Code Marketplace: [`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
-- GitHub Release: [`v0.3.0`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.3.0)
+- GitHub Release: [`v0.3.1`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.3.1)
 - CLI package: [`starling-ai`](https://www.npmjs.com/package/starling-ai)
 
 The GitHub release includes the packaged VSIX:
 
 ```text
-starling-ai-0.3.0.vsix
+starling-ai-0.3.1.vsix
 ```
 
 ## Requirements
@@ -50,7 +50,7 @@ npm install -g starling-ai
 
 You can also use the prompt to open the `starling.cliPath` setting.
 
-Starling Chat requires the current `starling-ai` npm package (0.3.0 or newer) on Node.js 22.19 or newer. The CLI bundles the Pi SDK dependency (range `>=0.82.0`) and hosts it directly; it does not launch `pi --mode rpc`, so a separate Pi CLI installation is unnecessary for Chat. The VS Code extension itself does not bundle or import the SDK.
+Starling Chat requires the current `starling-ai` npm package (0.3.1 or newer) on Node.js 22.19 or newer. The CLI bundles the Pi SDK dependency (range `>=0.82.0`) and hosts it directly; it does not launch `pi --mode rpc`, so a separate Pi CLI installation is unnecessary for Chat. The VS Code extension itself does not bundle or import the SDK.
 
 ## Views
 

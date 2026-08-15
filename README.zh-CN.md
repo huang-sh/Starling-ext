@@ -12,16 +12,16 @@ Starling Agent 是 Claude Code、Codex 与 Pi 会话的 VS Code 监控与工作�
 
 它配合 Starling CLI 使用，把本地 agent 历史整理成 Monitor、Catalog、Projects、Models 等视图，并在 VS Code 右侧边栏提供 Starling Chat。
 
-当前版本：**0.3.0**
+当前版本：**0.3.1**
 
 - VS Code Marketplace：[`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
-- GitHub Release：[`v0.3.0`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.3.0)
+- GitHub Release：[`v0.3.1`](https://github.com/huang-sh/Starling-ext/releases/tag/v0.3.1)
 - CLI 包：[`starling-ai`](https://www.npmjs.com/package/starling-ai)
 
 GitHub Release 会附带打包好的 VSIX：
 
 ```text
-starling-ai-0.3.0.vsix
+starling-ai-0.3.1.vsix
 ```
 
 ## 安装要求
@@ -50,7 +50,7 @@ npm install -g starling-ai
 
 也可以通过提示直接打开 `starling.cliPath` 设置。
 
-Starling Chat 需要 Node.js 22.19 或更新版本上的 `starling-ai` npm 包（0.3.0 或更新）。CLI 捆绑 Pi SDK 依赖（`>=0.82.0`）并由 Starling Host 直接加载，不会执行 `pi --mode rpc`，因此聊天功能不需要单独安装 Pi CLI。VS Code 扩展本身不内置或加载 SDK。
+Starling Chat 需要 Node.js 22.19 或更新版本上的 `starling-ai` npm 包（0.3.1 或更新）。CLI 捆绑 Pi SDK 依赖（`>=0.82.0`）并由 Starling Host 直接加载，不会执行 `pi --mode rpc`，因此聊天功能不需要单独安装 Pi CLI。VS Code 扩展本身不内置或加载 SDK。
 
 ## 视图
 
