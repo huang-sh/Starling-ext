@@ -12,6 +12,12 @@ Starling Agent 是 Claude Code、Codex 与 Pi 会话的 VS Code 监控与工作�
 
 它配合 Starling CLI 使用，把本地 agent 历史整理成 Monitor、Catalog、Projects、Models 等视图，并在 VS Code 右侧边栏提供 Starling Chat。
 
+<p align="center">
+  <img src="assets/Starling-trajectory.png" alt="Session Trajectory 视图" width="720">
+</p>
+
+Session Trajectory：Claude Code、Codex 与 Pi 会话的 turn 粒度台账，支持过滤、搜索与完整输入/输出检视——Monitor 或 Catalog 视图一键打开。
+
 当前版本：**0.3.0**
 
 - VS Code Marketplace：[`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
@@ -128,6 +134,10 @@ Starling Chat 需要 Node.js 22.19 或更新版本上的 `starling-ai` npm 包�
 Monitor 是 VS Code 里的 `starling top`。它监控 pinned、active 和 recent 的 Claude Code、Codex 与 Pi 会话，显示状态、上下文、token、CPU、内存和当前任务。
 
 ### Session Trajectory
+
+<p align="center">
+  <img src="assets/Starling-trajectory.png" alt="Session Trajectory 视图" width="720">
+</p>
 
 在 Monitor 或 Catalog 中右键会话选择 **Show Session Trajectory**，会在编辑器 webview 中打开 turn 粒度的 trajectory 台账。支持 Claude Code、Codex 与 Pi 会话：
 
