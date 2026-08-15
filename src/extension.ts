@@ -8,6 +8,7 @@ import { ModelsProvider } from "./providers/models";
 import { McpProvider, extractMcpServerName } from "./providers/mcp";
 import { LiveStatusStore } from "./providers/liveStatus";
 import { SessionDetailPanel } from "./views/sessionDetail";
+import { TrajectoryPanel } from "./views/trajectoryView";
 import { PI_CHAT_VIEW_ID, PiChatViewProvider } from "./views/piChat";
 import * as cli from "./cli";
 import { shortSessionId } from "./sessionDisplay";
@@ -473,14 +474,20 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("starling.sessionTrajectory", async (node: unknown) => {
       const sessionId = await pickSessionId(node);
       if (!sessionId) return;
-      const full = await vscode.window.showQuickPick(
+      const detail = await vscode.window.showQuickPick(
         ["Summary (bounded previews)", "Full (include input/output text)"],
         { placeHolder: "Trajectory detail level" }
       );
-      if (!full) return;
-      await runCliCommandOutput("Starling: trajectory", () =>
-        cli.getTrajectoryText(sessionId, { full: full.startsWith("Full"), maxRecords: 1000 })
-      );
+      if (!detail) return;
+      try {
+        await TrajectoryPanel.createOrShow(sessionId, detail.startsWith("Full"));
+      } catch (err) {
+        if (await maybePromptStarlingInstall(err)) return;
+        const message = `Starling: trajectory failed: ${errorMessage(err)}`;
+        logError(message, err);
+        reportProblem("command", message);
+        vscode.window.showErrorMessage(message);
+      }
     })
   );
 

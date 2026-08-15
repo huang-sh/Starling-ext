@@ -905,6 +905,72 @@ export async function getTrajectoryText(id: string, opts: { full?: boolean; maxR
   return execStarlingRaw(args, { timeout: DEFAULT_JSON_TIMEOUT });
 }
 
+/** trajectory-v1 ledger shape (see the CLI's trajectory schema). */
+export interface TrajectoryRecord {
+  index: number;
+  id: string;
+  turn: number;
+  step?: number | null;
+  kind: string;
+  event: string;
+  summary: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  durationMs?: number | null;
+  status: string;
+  input?: string | null;
+  output?: string | null;
+  usage?: unknown;
+}
+
+export interface TrajectoryTurn {
+  index: number;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  durationMs?: number | null;
+  status: string;
+  steps: number;
+  records: number;
+  tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; cost?: number };
+}
+
+export interface Trajectory {
+  schemaVersion: number;
+  detailLevel: "summary" | "full";
+  session: {
+    id: string;
+    title: string;
+    provider: string;
+    model?: string | null;
+    parentSessionId?: string | null;
+    startedAt?: string | null;
+    updatedAt?: string | null;
+  };
+  stats: {
+    turns: number;
+    records: number;
+    returnedRecords?: number;
+    truncated?: number;
+    steps?: number;
+    toolCalls: number;
+    toolErrors: number;
+    tokens?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; cost?: number };
+    durationMs?: number | null;
+  };
+  turns: TrajectoryTurn[];
+  records: TrajectoryRecord[];
+  warnings?: Array<{ type?: string; message?: string }>;
+}
+
+export async function getTrajectory(
+  id: string,
+  opts: { full?: boolean; maxRecords?: number } = {}
+): Promise<Trajectory> {
+  const args = ["trajectory", id, "--json", "--max-records", String(opts.maxRecords ?? 1000)];
+  if (opts.full) args.push("--full");
+  return execStarlingJson<Trajectory>(args, { timeout: DEFAULT_JSON_TIMEOUT });
+}
+
 export async function updateSessionTitle(sessionId: string, title: string): Promise<string> {
   clearCliCache();
   return execStarlingRaw(["session", "meta", sessionId, "--title", title], { timeout: DEFAULT_TEXT_TIMEOUT });
