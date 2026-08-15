@@ -90,6 +90,9 @@ interface Row {
   sm: string;         // summary
   st: string;         // status
   d: number | null;   // durationMs
+  sa: string | null;  // startedAt
+  ca: string | null;  // completedAt
+  u: unknown;         // usage
   in: string | null;  // input (full only)
   out: string | null; // output (full only)
 }
@@ -126,6 +129,7 @@ function renderTrajectoryHtml(t: cli.Trajectory): string {
   const rows: Row[] = t.records.map((r) => ({
     i: r.index, t: r.turn, s: r.step ?? null, k: r.kind, e: r.event,
     sm: r.summary, st: r.status, d: r.durationMs ?? null,
+    sa: r.startedAt ?? null, ca: r.completedAt ?? null, u: r.usage ?? null,
     "in": r.input ?? null, out: r.output ?? null,
   }));
 
@@ -396,12 +400,22 @@ function renderTrajectoryHtml(t: cli.Trajectory): string {
     let html = "<h3>" + (ICON[r.k] || "·") + " " + esc(r.k) + " · #" + r.i +
       "<span class='x' id='inspx'>✕ esc</span></h3>" +
       kv([["Turn / Step", r.t + " / s" + (r.s ?? "—")], ["Event", r.e], ["Status", r.st],
-          ["Started", r.startedAt || "—"], ["Completed", r.completedAt || "—"],
-          ["Duration", r.d != null ? r.d + "ms" : "—"]]);
+          ["Started", r.sa ? r.sa.replace("T", " ").replace("Z", "") : "—"],
+          ["Completed", r.ca ? r.ca.replace("T", " ").replace("Z", "") : "—"],
+          ["Duration", r.d != null ? r.d + "ms" : "—"],
+          ["Tokens", usageLine(r.u)]]);
     if (r["in"]) html += "<h4>Input</h4><pre>" + esc(r["in"]) + "</pre>";
     if (r.out) html += "<h4>Output</h4><pre>" + esc(r.out) + "</pre>";
-    if (!r["in"] && !r.out && !D.hasDetail && r.k !== "user") {
-      html += "<p class='hint'>Reopen with “Full (include input/output text)” to load content.</p>";
+    if (r.sm === "(encrypted reasoning)") {
+      html += "<p class='hint'>Codex encrypts reasoning; only its presence is recorded.</p>";
+    } else if (!r["in"] && !r.out && r.k !== "user" && r.k !== "system" && r.k !== "assistant") {
+      if (D.hasDetail) {
+        html += "<p class='hint'>This record has no captured input/output text.</p>";
+      } else {
+        html += "<p class='hint'>Summary mode hides content. Reopen with “Full (include input/output text)” to load it.</p>";
+      }
+    } else if (!r["in"] && !r.out && !D.hasDetail && (r.k === "user")) {
+      html += "<p class='hint'>Summary mode hides content. Reopen with “Full (include input/output text)” to load it.</p>";
     }
     b.innerHTML = html;
     $("insp").classList.add("open");
@@ -434,6 +448,16 @@ function renderTrajectoryHtml(t: cli.Trajectory): string {
     return Math.floor(ms / 3600000) + "h" + Math.floor((ms % 3600000) / 60000) + "m";
   }
   function time(iso) { return iso ? iso.slice(11, 19) : "—"; }
+  function usageLine(u) {
+    if (!u || typeof u !== "object") return "—";
+    const parts = [];
+    if (u.input != null) parts.push("↑" + kfmt(u.input));
+    if (u.output != null) parts.push("↓" + kfmt(u.output));
+    if (u.cacheRead != null) parts.push("R" + kfmt(u.cacheRead));
+    if (u.cacheWrite != null) parts.push("W" + kfmt(u.cacheWrite));
+    if (u.cost && typeof u.cost === "object" && u.cost.total != null) parts.push("$" + u.cost.total);
+    return parts.length ? parts.join(" ") : "—";
+  }
   function stCls(st) { return st === "error" ? "st-err" : st === "running" ? "st-run" : st === "aborted" ? "st-abt" : "dim2"; }
   function stMark(st) { return st === "error" ? "✗" : st === "running" ? "…" : st === "aborted" ? "⊘" : ""; }
 
