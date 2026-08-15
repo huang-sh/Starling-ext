@@ -10,12 +10,6 @@
 
 VS Code monitor and workspace for Claude Code, Codex, and Pi sessions: live status, catalogs, projects, model profiles, resume, and fork.
 
-<p align="center">
-  <img src="assets/Starling-trajectory.png" alt="Session Trajectory webview" width="720">
-</p>
-
-Session Trajectory: turn-aware ledgers for Claude Code, Codex, and Pi sessions with filters, search, and full input/output inspection — one click from the Monitor or Catalog view.
-
 It works with the Starling CLI and turns local agent history into focused Monitor, Catalog, Projects, and Models views, plus Starling Chat in VS Code's right sidebar.
 
 Current release: **0.3.0**

@@ -12,12 +12,6 @@ Starling Agent 是 Claude Code、Codex 与 Pi 会话的 VS Code 监控与工作�
 
 它配合 Starling CLI 使用，把本地 agent 历史整理成 Monitor、Catalog、Projects、Models 等视图，并在 VS Code 右侧边栏提供 Starling Chat。
 
-<p align="center">
-  <img src="assets/Starling-trajectory.png" alt="Session Trajectory 视图" width="720">
-</p>
-
-Session Trajectory：Claude Code、Codex 与 Pi 会话的 turn 粒度台账，支持过滤、搜索与完整输入/输出检视——Monitor 或 Catalog 视图一键打开。
-
 当前版本：**0.3.0**
 
 - VS Code Marketplace：[`huangsh.starling-ai`](https://marketplace.visualstudio.com/items?itemName=huangsh.starling-ai)
