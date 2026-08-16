@@ -458,10 +458,10 @@ async function execStarlingRaw(args: string[], options: Partial<CliExecOptions> 
 }
 
 function isCommandNotFoundError(err: unknown): boolean {
-  const anyError = err as { code?: unknown; errno?: unknown; syscall?: unknown; path?: unknown; message?: unknown };
-  if (anyError?.code === "ENOENT") return true;
-  const message = typeof anyError?.message === "string" ? anyError.message : "";
-  return message.includes("ENOENT") || message.includes("not found");
+  // Only a spawn-level ENOENT means the CLI itself is missing. String matching
+  // on "not found" misclassifies CLI output like "Error: session not found"
+  // (command ran, failed on a bad session id) as a missing CLI.
+  return (err as { code?: unknown })?.code === "ENOENT";
 }
 
 function sanitizeCliOutput(value: string | undefined): string {

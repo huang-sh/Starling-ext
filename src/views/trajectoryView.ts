@@ -1,5 +1,8 @@
 import * as vscode from "vscode";
+import { readFileSync } from "fs";
+import { join } from "path";
 import * as cli from "../cli";
+import { TRAJECTORY_MD_JS } from "./trajectoryMarkdown";
 import { formatCompactTokens, shortSessionId } from "../sessionDisplay";
 
 const PANEL_TITLE = "Session Trajectory";
@@ -199,6 +202,23 @@ function embedJson(value: unknown): string {
     .replace(/&/g, "\\u0026");
 }
 
+/** marked + hljs vendored from pi's export-html template, inlined into the
+ *  webview HTML (both verified free of `</script>` sequences). Rendering then
+ *  matches pi's own TUI/export pipeline byte-for-byte. */
+let markdownBundleCache: string | null | undefined;
+function markdownItInlineScript(): string {
+  if (markdownBundleCache === undefined) {
+    try {
+      const markedJs = readFileSync(join(__dirname, "..", "..", "assets", "vendor", "marked.min.js"), "utf-8");
+      const hljsJs = readFileSync(join(__dirname, "..", "..", "assets", "vendor", "highlight.min.js"), "utf-8");
+      markdownBundleCache = `<script>${markedJs}</script><script>${hljsJs}</script>`;
+    } catch {
+      markdownBundleCache = null;
+    }
+  }
+  return markdownBundleCache ?? "";
+}
+
 function renderTrajectoryHtml(t: cli.Trajectory): string {
   const s = t.session;
   const stats = t.stats;
@@ -316,9 +336,55 @@ function renderTrajectoryHtml(t: cli.Trajectory): string {
   .kv dt { color: var(--vscode-descriptionForeground); }
   .kv dd { margin: 0; word-break: break-all; }
   #insp h4 { margin: 14px 0 4px; font-size: 12.5px; }
+  .fmt { font-size: 9.5px; padding: 1px 6px; border-radius: 8px; margin-left: 6px;
+         border: 1px solid var(--line); vertical-align: middle; font-weight: 400; }
+  .fmt.md { color: var(--vscode-charts-green, #89d185); }
+  .fmt.raw { color: var(--vscode-descriptionForeground); opacity: .75; }
+  .fmt.no-lib { color: var(--vscode-terminal-ansiRed); border-color: var(--vscode-terminal-ansiRed); }
   #insp pre { white-space: pre-wrap; word-break: break-word; margin: 0; padding: 10px;
               background: var(--vscode-textBlockQuote-background); border-radius: 6px;
               font-size: 11.5px; line-height: 1.45; max-height: 40vh; overflow: auto; }
+  /* markdown-rendered input/output */
+  /* markdown-content: pi export-html styles mapped to vscode theme vars */
+  #insp .md { font-size: 12px; line-height: 1.55; max-height: 55vh; overflow: auto;
+              background: var(--vscode-textBlockQuote-background); border-radius: 6px; padding: 10px 12px; }
+  #insp .md h1, #insp .md h2, #insp .md h3, #insp .md h4, #insp .md h5, #insp .md h6 {
+              color: var(--vscode-editorLightBulb-foreground, var(--vscode-foreground));
+              margin: 14px 0 4px; font-weight: 600; }
+  #insp .md h1 { font-size: 15.5px; } #insp .md h2 { font-size: 14px; }
+  #insp .md h3 { font-size: 13px; } #insp .md h4 { font-size: 12.5px; }
+  #insp .md h5, #insp .md h6 { font-size: 12px; }
+  #insp .md > :first-child { margin-top: 0; }
+  #insp .md > :last-child { margin-bottom: 0; }
+  #insp .md p { margin: 6px 0; }
+  #insp .md ul, #insp .md ol { margin: 6px 0; padding-left: 22px; }
+  #insp .md li { margin: 2px 0; }
+  #insp .md li::marker { color: var(--vscode-charts-blue, #3794ff); }
+  #insp .md blockquote { margin: 6px 0; padding: 2px 10px; border-left: 3px solid var(--vscode-textLink-foreground);
+                         color: var(--vscode-descriptionForeground); }
+  #insp .md code { font-family: var(--vscode-editor-font-family, monospace); font-size: 11.5px;
+                   background: var(--vscode-input-background); padding: 1px 4px; border-radius: 3px; }
+  #insp .md pre { white-space: pre-wrap; margin: 6px 0; padding: 10px;
+                  background: var(--vscode-input-background); border-radius: 4px; }
+  #insp .md pre code { background: none; padding: 0; font-size: 11.5px; display: block; }
+  #insp .md table { border-collapse: collapse; margin: 8px 0; }
+  #insp .md th, #insp .md td { border: 1px solid var(--line); padding: 3px 8px; font-size: 11.5px; text-align: left; }
+  #insp .md th { background: var(--vscode-input-background); font-weight: 600; }
+  #insp .md hr { border: none; border-top: 1px solid var(--line); margin: 10px 0; }
+  #insp .md a { color: var(--vscode-textLink-foreground); text-decoration: underline; }
+  #insp .md del { opacity: .75; }
+  #insp .md img { max-width: 100%; }
+  /* hljs token colors (pi template.css) mapped to vscode vars */
+  .hljs { background: transparent; }
+  .hljs-comment, .hljs-quote { color: var(--vscode-gitDecoration-untrackedResourceForeground, #6a9955); font-style: italic; }
+  .hljs-keyword, .hljs-selector-tag, .hljs-meta { color: var(--vscode-charts-pink, #c586c0); }
+  .hljs-number, .hljs-literal { color: var(--vscode-charts-orange, #b5cea8); }
+  .hljs-string, .hljs-doctag { color: var(--vscode-terminal-ansiGreen, #ce9178); }
+  .hljs-function, .hljs-title, .hljs-title.function_, .hljs-section, .hljs-name { color: var(--vscode-charts-yellow, #dcdcaa); }
+  .hljs-type, .hljs-class, .hljs-title.class_, .hljs-built_in { color: var(--vscode-charts-blue, #4ec9b0); }
+  .hljs-attr, .hljs-variable, .hljs-variable.language_, .hljs-params, .hljs-property { color: var(--vscode-charts-blue, #9cdcfe); }
+  .hljs-operator { color: var(--vscode-charts-purple, #d4d4d4); }
+  .hljs-subst { color: inherit; }
   .hint { color: var(--vscode-descriptionForeground); font-size: 11.5px; font-style: italic; }
   .empty { color: var(--vscode-descriptionForeground); padding: 30px 0; text-align: center; }
   body.pushed main, body.pushed header { padding-right: 47%; }
@@ -348,8 +414,10 @@ function renderTrajectoryHtml(t: cli.Trajectory): string {
 <main id="main"></main>
 <div id="insp"><div id="inspbody"></div></div>
 <script id="data" type="application/json">${embedJson(payload)}</script>
+${markdownItInlineScript()}
 <script>
 (function () {
+${TRAJECTORY_MD_JS}
   const D = JSON.parse(document.getElementById("data").textContent);
   const $ = (id) => document.getElementById(id);
   const state = { q: "", kinds: new Set(), status: "", range: D.rows.length, sel: null };
@@ -487,8 +555,8 @@ function renderTrajectoryHtml(t: cli.Trajectory): string {
           ["Completed", r.ca ? r.ca.replace("T", " ").replace("Z", "") : "—"],
           ["Duration", r.d != null ? r.d + "ms" : "—"],
           ["Tokens", usageLine(r.u)]]);
-    if (r["in"]) html += "<h4>Input</h4><pre>" + esc(r["in"]) + "</pre>";
-    if (r.out) html += "<h4>Output</h4><pre>" + esc(r.out) + "</pre>";
+    if (r["in"]) html += ioBlock("Input", r["in"]);
+    if (r.out) html += ioBlock("Output", r.out);
     if (r.sm === "(encrypted reasoning)") {
       html += "<p class='hint'>Codex encrypts reasoning; only its presence is recorded.</p>";
     } else if (!r["in"] && !r.out && !["user", "system", "assistant"].includes(r.k)) {
@@ -507,6 +575,15 @@ function renderTrajectoryHtml(t: cli.Trajectory): string {
   }
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeInsp(); });
 
+  function ioBlock(label, text) {
+    var t = String(text ?? "");
+    var rendered = mdOrPre(t);
+    var state = rendered.indexOf("<div class='md") === 0 ? "md"
+      : (looksMd(t) && typeof marked === "undefined" ? "no-lib" : "raw");
+    return "<h4>" + label + " <span class='fmt " + state + "'>" +
+      (state === "md" ? "markdown" : state === "no-lib" ? "NO-LIB" : "raw") +
+      "</span></h4>" + rendered;
+  }
   // ---- helpers ----
   function esc(s) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
   function kv(pairs) {

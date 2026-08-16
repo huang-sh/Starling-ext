@@ -794,11 +794,12 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "test": "npm run compile && node --test test/*.test.cjs"
+    "test": "npm run compile && node --test test/*.test.cjs",
+    "check:md": "node scripts/check-trajectory-md.mjs"
   },
   "devDependencies": {
-    "@types/vscode": "^1.106.0",
     "@types/node": "^20.14.0",
+    "@types/vscode": "^1.106.0",
     "typescript": "^5.5.0"
   },
   "extensionKind": [
