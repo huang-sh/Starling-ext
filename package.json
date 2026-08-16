@@ -170,6 +170,12 @@
         "icon": "$(list-ordered)"
       },
       {
+        "command": "starling.openMonitorPanel",
+        "category": "Starling",
+        "title": "Open Monitor Panel",
+        "icon": "$(pulse)"
+      },
+      {
         "command": "starling.setMonitorAgent",
         "category": "Starling",
         "title": "Set Monitor Agent Filter",
@@ -643,6 +649,11 @@
           "command": "starling.mcpOpenConfig",
           "when": "view == starling-mcp",
           "group": "navigation@1"
+        },
+        {
+          "command": "starling.openMonitorPanel",
+          "when": "view == starling-sessions",
+          "group": "navigation@7"
         },
         {
           "command": "starling.setMonitorSort",

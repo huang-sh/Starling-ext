@@ -9,6 +9,7 @@ import { McpProvider, extractMcpServerName } from "./providers/mcp";
 import { LiveStatusStore } from "./providers/liveStatus";
 import { SessionDetailPanel } from "./views/sessionDetail";
 import { TrajectoryPanel } from "./views/trajectoryView";
+import { MonitorPanel } from "./views/monitorPanel";
 import { PI_CHAT_VIEW_ID, PiChatViewProvider } from "./views/piChat";
 import * as cli from "./cli";
 import { shortSessionId } from "./sessionDisplay";
@@ -172,6 +173,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("starling.refresh", refreshHandler)
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("starling.openMonitorPanel", () => MonitorPanel.createOrShow(liveStatus))
   );
 
   context.subscriptions.push(

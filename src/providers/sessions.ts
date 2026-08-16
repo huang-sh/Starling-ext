@@ -45,6 +45,10 @@ class MonitorSummaryNode extends vscode.TreeItem {
       : summary.active > 0
         ? new vscode.ThemeIcon("pulse", statusColor("running"))
         : new vscode.ThemeIcon("pulse", statusColor("idle"));
+    this.command = {
+      title: "Open Monitor Panel",
+      command: "starling.openMonitorPanel",
+    };
     this.contextValue = "monitor-summary";
   }
 }
