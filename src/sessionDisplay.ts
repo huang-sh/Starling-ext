@@ -43,6 +43,7 @@ const LIVE_GLYPH: Record<LiveStatus, string> = {
   aborted: "×",
   failure: "×",
   stopped: "·",
+  orphaned: "⚠",
   unknown: "?",
 };
 
@@ -54,6 +55,7 @@ const LIVE_LABEL: Record<LiveStatus, string> = {
   aborted: "Aborted",
   failure: "Failure",
   stopped: "Stopped",
+  orphaned: "Orphaned",
   unknown: "Unknown",
 };
 

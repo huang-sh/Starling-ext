@@ -178,6 +178,7 @@ export type LiveStatus =
   | "aborted"
   | "failure"
   | "stopped"
+  | "orphaned"
   | "unknown";
 
 export interface MonitorToolCall {
@@ -681,6 +682,7 @@ function normalizeLiveStatus(value: unknown): LiveStatus {
   if (status === "running") return "running";
   if (status === "failure" || status === "failed" || status === "error") return "failure";
   if (status === "stopped" || status === "done") return "stopped";
+  if (status === "orphaned") return "orphaned";
   return "unknown";
 }
 
