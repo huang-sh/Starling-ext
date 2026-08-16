@@ -450,7 +450,7 @@ ${TRAJECTORY_MD_JS}
     const b = document.createElement("button");
     b.className = "fbtn on"; b.textContent = (ICON[k] || "·") + " " + k;
     b.onclick = () => { b.classList.toggle("on");
-      b.classList.contains("on") ? state.kinds.delete(k) : state.kinds.add(k); render(); };
+      b.classList.contains("on") ? state.kinds.add(k) : state.kinds.delete(k); render(); };
     state.kinds.add(k);
     kindsBar.appendChild(b);
   });
