@@ -125,6 +125,21 @@ Right-click a model profile to:
 
 Monitor pinned, active, and recent Claude Code, Codex, and Pi sessions with live status, context, token, CPU, memory, and task details.
 
+### Monitor Panel
+
+<p align="center">
+  <img src="assets/Starling-monitor.png" alt="Starling Monitor dashboard webview" width="720">
+</p>
+
+Click the `$(pulse)` button in the Monitor view title (or the "Starling monitor" summary row, or run `Starling: Open Monitor Panel`) to open a live dashboard in an editor webview. The sidebar Monitor tree stays unchanged. It shows:
+
+- Header stat cards: active, running, waiting, failures, pinned, and total sessions.
+- Search, per-status filter pills, agent filter, and a pinned-only toggle.
+- A session card grid with live status dots, context meters, token sparklines, CPU/memory, elapsed time, and last activity; waiting sessions get a highlighted border.
+- A click-through drawer with full metrics, token and context charts, skill usage, recent tools, and a markdown-rendered chat tail, plus Resume / Details / Trajectory / Copy ID actions.
+
+The panel is fed by the same background `starling top --json` poll as the sidebar tree, so sort and agent-filter settings apply to both.
+
 ### Session Trajectory
 
 <p align="center">
@@ -189,6 +204,7 @@ Common commands:
 - `Starling: Refresh`
 - `Starling: Set Monitor Agent Filter`
 - `Starling: Set Monitor Sort`
+- `Starling: Open Monitor Panel`
 - `Starling: Resume Session`
 - `Starling: Show Session Details`
 - `Starling: Show Session Trajectory`

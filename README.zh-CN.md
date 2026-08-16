@@ -127,6 +127,21 @@ Starling Chat 需要 Node.js 22.19 或更新版本上的 `starling-ai` npm 包�
 
 Monitor 是 VS Code 里的 `starling top`。它监控 pinned、active 和 recent 的 Claude Code、Codex 与 Pi 会话，显示状态、上下文、token、CPU、内存和当前任务。
 
+### Monitor 面板
+
+<p align="center">
+  <img src="assets/Starling-monitor.png" alt="Starling Monitor 仪表盘视图" width="720">
+</p>
+
+点击 Monitor 视图标题栏的 `$(pulse)` 按钮（或 "Starling monitor" 摘要行，或运行 `Starling: Open Monitor Panel`）在编辑器 webview 中打开实时仪表盘，侧边栏 Monitor 树保持不变：
+
+- 顶部统计卡片：active、running、waiting、failures、pinned 和总会话数。
+- 搜索、按状态过滤的 pill 按钮、agent 过滤和只看 pinned 开关。
+- 会话卡片网格：实时状态点、上下文进度条、token 迷你趋势图、CPU/内存、运行时长和最近活动；waiting 会话会高亮边框。
+- 点击卡片展开抽屉：完整指标、token 和上下文图表、skill 用量、最近工具调用和 Markdown 渲染的聊天尾部，并提供 Resume / Details / Trajectory / Copy ID 操作。
+
+面板与侧边栏树共享同一个 `starling top --json` 后台轮询，排序和 agent 过滤设置对两者同时生效。
+
 ### Session Trajectory
 
 <p align="center">
@@ -191,6 +206,7 @@ Linux 上，Pi 启动后会从进程列表隐藏一次性 CLI 参数。通过 St
 - `Starling: Refresh`
 - `Starling: Set Monitor Agent Filter`
 - `Starling: Set Monitor Sort`
+- `Starling: Open Monitor Panel`
 - `Starling: Resume Session`
 - `Starling: Show Session Details`
 - `Starling: Show Session Trajectory`
