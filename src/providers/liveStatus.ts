@@ -119,6 +119,7 @@ export class LiveStatusStore implements vscode.Disposable {
   private inFlight: Promise<cli.MonitorSnapshot | undefined> | undefined;
   private requestSerial = 0;
   private timer: NodeJS.Timeout | undefined;
+  private watch?: cli.MonitorWatchHandle;
   private disposed = false;
 
   getSnapshot(): cli.MonitorSnapshot | undefined {
@@ -139,6 +140,49 @@ export class LiveStatusStore implements vscode.Disposable {
   }
 
   startBackgroundMonitoring(): vscode.Disposable {
+    this.startWatchOrPoll();
+    return new vscode.Disposable(() => this.dispose());
+  }
+
+  /**
+   * Preferred source: `starling top --json --watch` — one persistent
+   * process pushing ~1s snapshots (hot cache, ≤2s perceived latency).
+   * Falls back to the legacy poll loop whenever the watch process dies
+   * (unsupported CLI build, crash, binary upgrade), with periodic retry
+   * of the watch path. Dispose kills the watch child.
+   */
+  private startWatchOrPoll(): void {
+    const handle = cli.watchMonitorSnapshots({
+      agent: getConfiguredMonitorAgentFilter(),
+      sort: getConfiguredMonitorSort(),
+      onSnapshot: (raw) => {
+        try {
+          const next = cli.normalizeMonitorSnapshot(raw);
+          clearProblem("monitor");
+          this.replaceSnapshot(next);
+          // Watch is healthy: make sure no poll timer competes with it.
+          this.stopPollTimer();
+        } catch (err) {
+          logError("Monitor watch snapshot parse failed", err);
+        }
+      },
+      onExit: (reason) => {
+        this.watch = undefined;
+        if (this.disposed) return;
+        logError(`Monitor watch stopped; falling back to polling`, new Error(reason));
+        this.startPolling();
+      },
+    });
+    this.watch = handle;
+    // Safety net: if the watch never produces a snapshot (stalled pipe),
+    // the poll fallback still delivers data.
+    this.timer = setTimeout(() => {
+      if (!this.disposed && !this.snapshot) this.startPolling();
+    }, getMonitorRefreshMs() * 2);
+  }
+
+  private startPolling(): void {
+    this.stopPollTimer();
     const tick = async () => {
       if (this.disposed) return;
       await this.refresh({ force: true });
@@ -146,7 +190,13 @@ export class LiveStatusStore implements vscode.Disposable {
       this.timer = setTimeout(tick, monitorRefreshDelayMs(getMonitorRefreshMs()));
     };
     this.timer = setTimeout(tick, 0);
-    return new vscode.Disposable(() => this.dispose());
+  }
+
+  private stopPollTimer(): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+    }
   }
 
   async ensureSnapshot(): Promise<cli.MonitorSnapshot | undefined> {
@@ -187,6 +237,8 @@ export class LiveStatusStore implements vscode.Disposable {
 
   dispose(): void {
     this.disposed = true;
+    this.watch?.dispose();
+    this.watch = undefined;
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = undefined;

@@ -550,6 +550,73 @@ async function execStarlingJson<T>(args: string[], options: Partial<CliExecOptio
   return parseJsonOutput<T>(stdout, commandLabel);
 }
 
+/**
+ * Streaming monitor watch: `starling top --json --watch` emits one JSON
+ * snapshot per line (~1s). Replaces per-tick cold `top --json` spawns —
+ * the persistent process keeps the transcript-metrics cache hot, cutting
+ * status-change latency from O(poll-interval + cold-parse) to ≲1s.
+ * Resolves on the first snapshot; `onSnapshot`/`onExit` stream after that.
+ * Returns a handle that callers MUST dispose (kills the child).
+ */
+export interface MonitorWatchHandle {
+  dispose(): void;
+}
+
+export function watchMonitorSnapshots(options: {
+  agent?: string;
+  sort?: string;
+  onSnapshot: (snapshot: unknown) => void;
+  onExit: (reason: string) => void;
+}): MonitorWatchHandle {
+  const args = ["top", "--json", "--watch"];
+  if (options.agent) args.push("--agent", options.agent);
+  if (options.sort) args.push("--sort", options.sort);
+  const command = starlingCommand(args);
+  const env = starlingHomePath()
+    ? { ...process.env, STARLING_HOME: starlingHomePath() }
+    : process.env;
+  const child = spawn(command.file, command.args, {
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+    // PATHEXT resolution on Windows (see execStarlingRaw note)
+    shell: process.platform === "win32",
+  });
+  let disposed = false;
+  let buffer = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk: string) => {
+    buffer += chunk;
+    let newline: number;
+    while ((newline = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      if (!line.startsWith("{")) continue;
+      try {
+        options.onSnapshot(JSON.parse(line));
+      } catch {
+        // partial/corrupt line — skip, next line resyncs
+      }
+    }
+  });
+  const exit = (reason: string) => {
+    if (disposed) return;
+    disposed = true;
+    try { child.kill(); } catch {}
+    options.onExit(reason);
+  };
+  child.on("error", (err) => exit(`watch process error: ${err.message}`));
+  child.on("exit", (code, signal) =>
+    exit(`watch process exited (code=${code}, signal=${signal ?? "none"})`)
+  );
+  return {
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      try { child.kill(); } catch {}
+    },
+  };
+}
+
 export async function listSessions(
   limit = 50,
   agent?: string,
@@ -596,7 +663,7 @@ function monitorCommandTimeoutMs(): number {
   return monitorTimeoutMs(configured);
 }
 
-function normalizeMonitorSnapshot(raw: unknown): MonitorSnapshot {
+export function normalizeMonitorSnapshot(raw: unknown): MonitorSnapshot {
   if (Array.isArray(raw)) {
     const rows = raw.map((row) => normalizeMonitorRow(row));
     const pinned = rows.filter((row) => row.pinned);
