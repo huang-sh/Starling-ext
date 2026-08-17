@@ -68,12 +68,13 @@ class PinNode extends vscode.TreeItem {
     this.tooltip = mdTooltip(tooltipRows);
     // Origin is the primary visual identity: auto-archive pins show the
     // plain file icon (the status lives in the Monitor view); manual pins
-    // get the bookmark icon + tint, with live status winning when known.
+    // get the pin icon + blue tint (distinct from catalog bookmarks), with
+    // live status winning when known.
     this.iconPath = bookmark.origin === "auto"
       ? new vscode.ThemeIcon("file")
       : monitor
         ? iconForStatus(monitor.status)
-        : new vscode.ThemeIcon("bookmark", new vscode.ThemeColor("charts.purple"));
+        : new vscode.ThemeIcon("pinned", new vscode.ThemeColor("charts.blue"));
     this.contextValue = "session-pin";
   }
 }
