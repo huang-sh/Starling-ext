@@ -29,12 +29,12 @@ class SpaceNode extends vscode.TreeItem {
       ["Tags", space.tags.join(", ") || "-"],
       ["Created", space.created_at],
     ]);
-    // Auto-created catalogs (cwd-named auto-archive) use the archive icon
-    // with a distinct color — "file-directory" turned out visually identical
-    // to "folder". User-created catalogs keep the themed folder.
+    // Auto-created catalogs (cwd-named auto-archive) keep the themed folder
+    // (they behave like normal catalogs); user-created ones get the bookmark
+    // icon + tint to stand out as hand-picked collections.
     this.iconPath = isAutoArchiveCatalog(space)
-      ? new vscode.ThemeIcon("archive", new vscode.ThemeColor("charts.blue"))
-      : new vscode.ThemeIcon("folder");
+      ? new vscode.ThemeIcon("folder")
+      : new vscode.ThemeIcon("bookmark", new vscode.ThemeColor("charts.purple"));
     this.contextValue = "catalog";
   }
 }
@@ -66,14 +66,14 @@ class PinNode extends vscode.TreeItem {
       ["Created", bookmark.created_at],
     ];
     this.tooltip = mdTooltip(tooltipRows);
-    // Origin is the primary visual identity: auto-archive pins always show
-    // the file icon (the status lives in the Monitor view); manual pins
-    // show the live status icon when known, bookmark otherwise.
+    // Origin is the primary visual identity: auto-archive pins show the
+    // plain file icon (the status lives in the Monitor view); manual pins
+    // get the bookmark icon + tint, with live status winning when known.
     this.iconPath = bookmark.origin === "auto"
-      ? new vscode.ThemeIcon("file", new vscode.ThemeColor("charts.blue"))
+      ? new vscode.ThemeIcon("file")
       : monitor
         ? iconForStatus(monitor.status)
-        : new vscode.ThemeIcon("bookmark");
+        : new vscode.ThemeIcon("bookmark", new vscode.ThemeColor("charts.purple"));
     this.contextValue = "session-pin";
   }
 }
