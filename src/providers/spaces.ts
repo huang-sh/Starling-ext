@@ -24,11 +24,16 @@ class SpaceNode extends vscode.TreeItem {
     this.tooltip = mdTooltip([
       ["Catalog", space.name],
       ["ID", `\`${space.id}\``],
+      ["Origin", isAutoArchiveCatalog(space) ? "auto-archive" : "manual"],
       ["Description", space.description || "-"],
       ["Tags", space.tags.join(", ") || "-"],
       ["Created", space.created_at],
     ]);
-    this.iconPath = new vscode.ThemeIcon("folder");
+    // Auto-created catalogs (cwd-named auto-archive) use the plain
+    // file-directory icon; user-created ones keep the themed folder.
+    this.iconPath = isAutoArchiveCatalog(space)
+      ? new vscode.ThemeIcon("file-directory")
+      : new vscode.ThemeIcon("folder");
     this.contextValue = "catalog";
   }
 }
@@ -70,6 +75,13 @@ class PinNode extends vscode.TreeItem {
         : new vscode.ThemeIcon("bookmark");
     this.contextValue = "session-pin";
   }
+}
+
+/** Description the starling auto-archive hook stamps on cwd-named catalogs. */
+const AUTO_ARCHIVE_DESCRIPTION = "Auto-created from agent working directory";
+
+function isAutoArchiveCatalog(space: { description?: string }): boolean {
+  return space.description === AUTO_ARCHIVE_DESCRIPTION;
 }
 
 function truncate(value: string, maxLength = 28): string {
