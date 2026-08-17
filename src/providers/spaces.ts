@@ -29,10 +29,11 @@ class SpaceNode extends vscode.TreeItem {
       ["Tags", space.tags.join(", ") || "-"],
       ["Created", space.created_at],
     ]);
-    // Auto-created catalogs (cwd-named auto-archive) use the plain
-    // file-directory icon; user-created ones keep the themed folder.
+    // Auto-created catalogs (cwd-named auto-archive) use the archive icon
+    // with a distinct color — "file-directory" turned out visually identical
+    // to "folder". User-created catalogs keep the themed folder.
     this.iconPath = isAutoArchiveCatalog(space)
-      ? new vscode.ThemeIcon("file-directory")
+      ? new vscode.ThemeIcon("archive", new vscode.ThemeColor("charts.blue"))
       : new vscode.ThemeIcon("folder");
     this.contextValue = "catalog";
   }
@@ -69,7 +70,7 @@ class PinNode extends vscode.TreeItem {
     // the file icon (the status lives in the Monitor view); manual pins
     // show the live status icon when known, bookmark otherwise.
     this.iconPath = bookmark.origin === "auto"
-      ? new vscode.ThemeIcon("file")
+      ? new vscode.ThemeIcon("file", new vscode.ThemeColor("charts.blue"))
       : monitor
         ? iconForStatus(monitor.status)
         : new vscode.ThemeIcon("bookmark");
