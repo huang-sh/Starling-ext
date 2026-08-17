@@ -60,12 +60,13 @@ class PinNode extends vscode.TreeItem {
       ["Created", bookmark.created_at],
     ];
     this.tooltip = mdTooltip(tooltipRows);
-    // Auto-archive pins keep the file icon; manual pins keep the bookmark.
-    // Live status still wins for both when a monitor row exists.
-    this.iconPath = monitor
-      ? iconForStatus(monitor.status)
-      : bookmark.origin === "auto"
-        ? new vscode.ThemeIcon("file")
+    // Origin is the primary visual identity: auto-archive pins always show
+    // the file icon (the status lives in the Monitor view); manual pins
+    // show the live status icon when known, bookmark otherwise.
+    this.iconPath = bookmark.origin === "auto"
+      ? new vscode.ThemeIcon("file")
+      : monitor
+        ? iconForStatus(monitor.status)
         : new vscode.ThemeIcon("bookmark");
     this.contextValue = "session-pin";
   }
