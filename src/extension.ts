@@ -348,8 +348,11 @@ export function activate(context: vscode.ExtensionContext): void {
       if (confirmed !== "Delete Session") return;
 
       try {
-        const target = await resolveSessionCommandTarget(sessionId, node);
-        await cli.deleteSession(target.reference);
+        // Resolve best-effort: a stale pin (session file already gone)
+        // cannot resolve, but the CLI delete still removes the leftover pin —
+        // fall back to the raw id so cleanup stays possible.
+        const target = await resolveSessionCommandTarget(sessionId, node).catch(() => undefined);
+        await cli.deleteSession(target?.reference ?? sessionId);
         vscode.window.showInformationMessage(`Deleted session ${shortSessionId(sessionId)}…`);
         refreshAllViews();
       } catch (err) {
