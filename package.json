@@ -453,6 +453,11 @@
           "group": "sessionContext@2"
         },
         {
+          "command": "starling.forkSession",
+          "when": "viewItem == session-pin || viewItem == session-pinned || viewItem == session-unpinned || viewItem == project-session",
+          "group": "sessionContext@4"
+        },
+        {
           "command": "starling.sessionTrajectory",
           "when": "viewItem == session-unpinned || viewItem == session-pinned || viewItem == project-session",
           "group": "sessionContext@3"
