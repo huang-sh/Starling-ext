@@ -55,11 +55,18 @@ class PinNode extends vscode.TreeItem {
       ["First prompt", bookmark.first_prompt || "-"],
       ["Title", bookmark.title || "-"],
       ["Tags", bookmark.tags.join(", ") || "-"],
+      ["Origin", bookmark.origin === "auto" ? "auto-archive" : "manual"],
       ["Updated", bookmark.updated_at],
       ["Created", bookmark.created_at],
     ];
     this.tooltip = mdTooltip(tooltipRows);
-    this.iconPath = monitor ? iconForStatus(monitor.status) : new vscode.ThemeIcon("bookmark");
+    // Auto-archive pins keep the file icon; manual pins keep the bookmark.
+    // Live status still wins for both when a monitor row exists.
+    this.iconPath = monitor
+      ? iconForStatus(monitor.status)
+      : bookmark.origin === "auto"
+        ? new vscode.ThemeIcon("file")
+        : new vscode.ThemeIcon("bookmark");
     this.contextValue = "session-pin";
   }
 }

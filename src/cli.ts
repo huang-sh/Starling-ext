@@ -80,6 +80,8 @@ export interface Bookmark {
   first_prompt: string;
   notes: Note[];
   space_ids: string[];
+  /** "manual" | "auto" (auto-archive from agent hooks); absent = manual */
+  origin?: string;
   created_at: string;
   updated_at: string;
 }

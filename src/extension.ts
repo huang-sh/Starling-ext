@@ -3,7 +3,6 @@ import * as path from "path";
 import { homedir } from "os";
 import { SessionsProvider } from "./providers/sessions";
 import { SpacesProvider } from "./providers/spaces";
-import { ProjectsProvider } from "./providers/projects";
 import { ModelsProvider } from "./providers/models";
 import { McpProvider, extractMcpServerName } from "./providers/mcp";
 import { LiveStatusStore } from "./providers/liveStatus";
@@ -123,7 +122,6 @@ export function activate(context: vscode.ExtensionContext): void {
   const liveStatus = new LiveStatusStore();
   const sessionsProvider = new SessionsProvider(liveStatus);
   const spacesProvider = new SpacesProvider(liveStatus);
-  const projectsProvider = new ProjectsProvider(liveStatus);
   const modelsProvider = new ModelsProvider();
   const mcpProvider = new McpProvider();
   const piChatProvider = new PiChatViewProvider();
@@ -134,7 +132,6 @@ export function activate(context: vscode.ExtensionContext): void {
   sessionsProvider.setTreeView(sessionsTree);
   context.subscriptions.push(sessionsTree, liveStatus.startBackgroundMonitoring());
   vscode.window.registerTreeDataProvider("starling-spaces", spacesProvider);
-  vscode.window.registerTreeDataProvider("starling-projects", projectsProvider);
   vscode.window.registerTreeDataProvider("starling-models", modelsProvider);
   vscode.window.registerTreeDataProvider("starling-mcp", mcpProvider);
   context.subscriptions.push(
@@ -155,9 +152,6 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     if (scope === "all") {
       spacesProvider.refresh();
-    }
-    if (scope === "all" || scope === "projects") {
-      projectsProvider.refresh();
     }
     if (scope === "all" || scope === "models") {
       modelsProvider.refresh();
@@ -522,16 +516,6 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       sessionsProvider.showMoreSessions(normalized);
-    })
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand("starling.loadMoreProjectSessions", (path: unknown) => {
-      const projectPath = typeof path === "string" ? path : extractProjectPath(path);
-      if (!projectPath) {
-        return;
-      }
-      projectsProvider.showMoreProjectSessions(projectPath);
     })
   );
 

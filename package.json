@@ -20,7 +20,6 @@
   "activationEvents": [
     "onStartupFinished",
     "onView:starling-spaces",
-    "onView:starling-projects",
     "onView:starling-models",
     "onView:starling-mcp",
     "onView:starling-sessions",
@@ -102,11 +101,6 @@
           "id": "starling-spaces",
           "name": "Catalog",
           "icon": "$(layers)"
-        },
-        {
-          "id": "starling-projects",
-          "name": "Projects",
-          "icon": "$(repo)"
         },
         {
           "id": "starling-models",
@@ -667,7 +661,7 @@
         },
         {
           "command": "starling.refresh",
-          "when": "view == starling-sessions || view == starling-spaces || view == starling-projects || view == starling-models || view == starling-mcp",
+          "when": "view == starling-sessions || view == starling-spaces || view == starling-models || view == starling-mcp",
           "group": "navigation@9"
         }
       ],
