@@ -139,3 +139,13 @@ test("command-cache invalidation preserves stale monitor data and retry backoff"
   assert.deepEqual(backedOff, initial);
   assert.equal(calls, 2);
 });
+
+test("active monitor rows are running or waiting, not merely pid-backed", () => {
+  const cli = loadCli(async () => ({ stdout: emptySnapshotJson(), stderr: "" }));
+
+  assert.equal(cli.isActiveMonitorRowStatus({ status: "running" }), true);
+  assert.equal(cli.isActiveMonitorRowStatus({ status: "waiting" }), true);
+  assert.equal(cli.isActiveMonitorRowStatus({ status: "idle", pid: 1 }), false);
+  assert.equal(cli.isActiveMonitorRowStatus({ status: "orphaned", pid: 1 }), false);
+  assert.equal(cli.isActiveMonitorRowStatus({ status: "stopped", pid: 1 }), false);
+});

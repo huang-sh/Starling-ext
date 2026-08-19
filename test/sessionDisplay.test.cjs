@@ -13,6 +13,20 @@ test("formats monitor status glyphs with the canonical statuses", () => {
   assert.equal(display.formatStatusGlyph("unknown"), "? Unknown");
 });
 
+test("uses the CLI active total instead of recounting duplicate process rows", () => {
+  const summary = display.summarizeMonitorRows(
+    [
+      { status: "running" },
+      { status: "running" },
+      { status: "orphaned" },
+    ],
+    2,
+  );
+
+  assert.equal(summary.active, 2);
+  assert.match(summary.tooltip, /^2 active,/);
+});
+
 test("formats compact token counts and token usage", () => {
   assert.equal(display.formatTokenCount(undefined), "-");
   assert.equal(display.formatTokenCount(842), "842");

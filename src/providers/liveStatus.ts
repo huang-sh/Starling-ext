@@ -119,6 +119,7 @@ export class LiveStatusStore implements vscode.Disposable {
   private inFlight: Promise<cli.MonitorSnapshot | undefined> | undefined;
   private requestSerial = 0;
   private timer: NodeJS.Timeout | undefined;
+  private watchRetryTimer: NodeJS.Timeout | undefined;
   private watch?: cli.MonitorWatchHandle;
   private disposed = false;
 
@@ -152,11 +153,14 @@ export class LiveStatusStore implements vscode.Disposable {
    * of the watch path. Dispose kills the watch child.
    */
   private startWatchOrPoll(): void {
+    this.stopWatchRetryTimer();
+    let receivedSnapshot = false;
     const handle = cli.watchMonitorSnapshots({
       agent: getConfiguredMonitorAgentFilter(),
       sort: getConfiguredMonitorSort(),
       onSnapshot: (raw) => {
         try {
+          receivedSnapshot = true;
           const next = cli.normalizeMonitorSnapshot(raw);
           clearProblem("monitor");
           this.replaceSnapshot(next);
@@ -171,13 +175,18 @@ export class LiveStatusStore implements vscode.Disposable {
         if (this.disposed) return;
         logError(`Monitor watch stopped; falling back to polling`, new Error(reason));
         this.startPolling();
+        this.watchRetryTimer = setTimeout(() => {
+          if (this.disposed || this.watch) return;
+          this.stopPollTimer();
+          this.startWatchOrPoll();
+        }, getMonitorRefreshMs());
       },
     });
     this.watch = handle;
     // Safety net: if the watch never produces a snapshot (stalled pipe),
     // the poll fallback still delivers data.
     this.timer = setTimeout(() => {
-      if (!this.disposed && !this.snapshot) this.startPolling();
+      if (!this.disposed && !receivedSnapshot) this.startPolling();
     }, getMonitorRefreshMs() * 2);
   }
 
@@ -186,7 +195,7 @@ export class LiveStatusStore implements vscode.Disposable {
     const tick = async () => {
       if (this.disposed) return;
       await this.refresh({ force: true });
-      if (this.disposed) return;
+      if (this.disposed || this.watch) return;
       this.timer = setTimeout(tick, monitorRefreshDelayMs(getMonitorRefreshMs()));
     };
     this.timer = setTimeout(tick, 0);
@@ -196,6 +205,13 @@ export class LiveStatusStore implements vscode.Disposable {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = undefined;
+    }
+  }
+
+  private stopWatchRetryTimer(): void {
+    if (this.watchRetryTimer) {
+      clearTimeout(this.watchRetryTimer);
+      this.watchRetryTimer = undefined;
     }
   }
 
@@ -239,6 +255,7 @@ export class LiveStatusStore implements vscode.Disposable {
     this.disposed = true;
     this.watch?.dispose();
     this.watch = undefined;
+    this.stopWatchRetryTimer();
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = undefined;

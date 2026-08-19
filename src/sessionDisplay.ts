@@ -1,4 +1,4 @@
-import type { TokenUsage, LiveStatus } from "./cli";
+import type { TokenUsage, LiveStatus, MonitorRow } from "./cli";
 
 export const SHORT_SESSION_ID_LENGTH = 13;
 
@@ -61,6 +61,36 @@ const LIVE_LABEL: Record<LiveStatus, string> = {
 
 export function formatStatusGlyph(status: LiveStatus): string {
   return `${LIVE_GLYPH[status] ?? "?"} ${LIVE_LABEL[status] ?? status}`;
+}
+
+export function summarizeMonitorRows(
+  rows: ReadonlyArray<Pick<MonitorRow, "status">>,
+  active: number,
+): { attention: number; active: number; tooltip: string } {
+  const counts = new Map<LiveStatus, number>();
+  for (const row of rows) {
+    counts.set(row.status, (counts.get(row.status) ?? 0) + 1);
+  }
+  const waiting = counts.get("waiting") ?? 0;
+  const running = counts.get("running") ?? 0;
+  const stale = counts.get("stale_running") ?? 0;
+  const aborted = counts.get("aborted") ?? 0;
+  const idle = counts.get("idle") ?? 0;
+  const failure = counts.get("failure") ?? 0;
+  const parts = [
+    active ? `${active} active` : "",
+    waiting ? `${waiting} waiting` : "",
+    running ? `${running} running` : "",
+    stale ? `${stale} stale` : "",
+    failure ? `${failure} failure` : "",
+    aborted ? `${aborted} aborted` : "",
+    idle ? `${idle} idle` : "",
+  ].filter(Boolean);
+  return {
+    attention: waiting,
+    active,
+    tooltip: parts.length ? parts.join(", ") : "No active sessions",
+  };
 }
 
 /** Elapsed seconds → "1h 5m" / "12m" / "45s". */

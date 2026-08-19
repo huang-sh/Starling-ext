@@ -11,6 +11,7 @@ import {
   formatStatusGlyph,
   formatTokenUsage,
   shortSessionId,
+  summarizeMonitorRows,
 } from "../sessionDisplay";
 import { clearProblem, logError, reportProblem } from "../logging";
 import { iconForStatus, LiveStatusStore, monitorIdentityKey, statusColor } from "./liveStatus";
@@ -35,7 +36,7 @@ class MonitorSummaryNode extends vscode.TreeItem {
   constructor(snapshot: cli.MonitorSnapshot) {
     super("Starling monitor", vscode.TreeItemCollapsibleState.None);
     const rows = monitorRows(snapshot);
-    const summary = summarizeMonitorRows(rows);
+    const summary = summarizeMonitorRows(rows, snapshot.active);
     const agent = getConfiguredMonitorAgentMode();
     const sort = getConfiguredMonitorSort();
     this.description = `${snapshot.pinned_total} pinned  ·  ${snapshot.active} active  ·  agent ${agent}  ·  sort ${sort}`;
@@ -424,7 +425,12 @@ export class SessionsProvider implements vscode.TreeDataProvider<TreeNode> {
 
   private updateBadge(): void {
     if (!this.treeView) return;
-    const summary = summarizeMonitorRows(this.liveStatus.getRows());
+    const snapshot = this.liveStatus.getSnapshot();
+    if (!snapshot) {
+      this.treeView.badge = undefined;
+      return;
+    }
+    const summary = summarizeMonitorRows(this.liveStatus.getRows(), snapshot.active);
     if (summary.attention > 0) {
       this.treeView.badge = {
         value: summary.attention,
@@ -500,32 +506,4 @@ function getSessionsLimit(): number {
   const normalized = Number(configured);
   if (!Number.isFinite(normalized)) return 50;
   return Math.max(0, Math.floor(normalized));
-}
-
-function summarizeMonitorRows(rows: cli.MonitorRow[]): { attention: number; active: number; tooltip: string } {
-  const counts = new Map<cli.LiveStatus, number>();
-  for (const row of rows) {
-    counts.set(row.status, (counts.get(row.status) ?? 0) + 1);
-  }
-  const waiting = counts.get("waiting") ?? 0;
-  const running = counts.get("running") ?? 0;
-  const stale = counts.get("stale_running") ?? 0;
-  const aborted = counts.get("aborted") ?? 0;
-  const idle = counts.get("idle") ?? 0;
-  const failure = counts.get("failure") ?? 0;
-  const active = rows.filter(isActiveMonitorRow).length;
-  const parts = [
-    active ? `${active} active` : "",
-    waiting ? `${waiting} waiting` : "",
-    running ? `${running} running` : "",
-    stale ? `${stale} stale` : "",
-    failure ? `${failure} failure` : "",
-    aborted ? `${aborted} aborted` : "",
-    idle ? `${idle} idle` : "",
-  ].filter(Boolean);
-  return {
-    attention: waiting,
-    active,
-    tooltip: parts.length ? parts.join(", ") : "No active sessions",
-  };
 }

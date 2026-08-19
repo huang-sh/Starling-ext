@@ -759,8 +759,8 @@ function isActiveMonitorRow(row: MonitorRow): boolean {
   return isActiveMonitorRowStatus(row);
 }
 
-export function isActiveMonitorRowStatus(row: Pick<MonitorRow, "pid" | "status">): boolean {
-  return row.pid !== undefined;
+export function isActiveMonitorRowStatus(row: Pick<MonitorRow, "status">): boolean {
+  return row.status === "running" || row.status === "waiting";
 }
 
 function normalizeMonitorToolCall(raw: unknown): MonitorToolCall {
