@@ -1392,6 +1392,7 @@ export async function getSpace(name: string): Promise<SpaceWithPins> {
 }
 
 export async function createCatalog(name: string, opts: { description?: string; tags?: string; parent?: string } = {}): Promise<string> {
+  clearCliCache("spaceList:");
   const args = ["catalog", "create", name];
   if (opts.description) args.push("-d", opts.description);
   if (opts.tags) args.push("--tags", opts.tags);
@@ -1400,10 +1401,12 @@ export async function createCatalog(name: string, opts: { description?: string; 
 }
 
 export async function removeCatalog(name: string): Promise<string> {
+  clearCliCache("spaceList:");
   return execStarlingRaw(["catalog", "delete", name, "--yes"], { timeout: DEFAULT_TEXT_TIMEOUT });
 }
 
 export async function renameCatalog(name: string, newName: string): Promise<string> {
+  clearCliCache("spaceList:");
   return execStarlingRaw(["catalog", "rename", name, newName], { timeout: DEFAULT_TEXT_TIMEOUT });
 }
 
