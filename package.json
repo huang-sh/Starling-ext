@@ -2,7 +2,7 @@
   "name": "starling-ai",
   "displayName": "Starling Agent",
   "description": "VS Code monitor and workspace for Claude Code, Codex, and Pi sessions: live status, catalogs, projects, model profiles, resume, and fork.",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "publisher": "huangsh",
   "icon": "icons/starling.png",
   "license": "MIT",
