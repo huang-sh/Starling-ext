@@ -89,16 +89,16 @@ function truncate(value: string, maxLength = 28): string {
   return `…${trimmed.slice(-(maxLength - 1))}`;
 }
 
-class PinGroupNode extends vscode.TreeItem {
-  constructor(label: string, icon: string, color: string, public readonly pins: PinNode[]) {
+class CatalogGroupNode extends vscode.TreeItem {
+  constructor(label: string, icon: string, color: string, public readonly catalogs: SpaceNode[]) {
     super(label, vscode.TreeItemCollapsibleState.Expanded);
-    this.description = `${pins.length}`;
+    this.description = `${catalogs.length}`;
     this.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
-    this.contextValue = "pin-group";
+    this.contextValue = "catalog-group";
   }
 }
 
-type TreeNode = SpaceNode | PinNode | PinGroupNode | vscode.TreeItem;
+type TreeNode = SpaceNode | PinNode | CatalogGroupNode | vscode.TreeItem;
 
 function errorItem(label: string, err: unknown): vscode.TreeItem {
   const message = err instanceof Error ? err.message : String(err);
@@ -135,10 +135,21 @@ export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
           return [new vscode.TreeItem("No catalogs", vscode.TreeItemCollapsibleState.None)];
         }
         const roots = spaces.filter((space) => !space.parent_id);
-        return roots.map((space) => new SpaceNode(space, childCatalogs(spaces, space.id)));
+        const toNode = (space: cli.Space) => new SpaceNode(space, childCatalogs(spaces, space.id));
+        // Manual and auto-created catalogs stay visually separated at the
+        // root; when only one kind exists the tree stays flat.
+        const manual = roots.filter((s) => !isAutoArchiveCatalog(s)).map(toNode);
+        const auto = roots.filter((s) => isAutoArchiveCatalog(s)).map(toNode);
+        if (manual.length > 0 && auto.length > 0) {
+          return [
+            new CatalogGroupNode("Manual catalogs", "bookmark", "charts.purple", manual),
+            new CatalogGroupNode("Auto-created catalogs", "folder-library", "charts.green", auto),
+          ];
+        }
+        return roots.map(toNode);
       }
-      if (element instanceof PinGroupNode) {
-        return element.pins;
+      if (element instanceof CatalogGroupNode) {
+        return element.catalogs;
       }
       if (element instanceof SpaceNode) {
         const children = childCatalogs(spaces, element.space.id).map((space) =>
@@ -149,27 +160,18 @@ export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
         if (children.length === 0 && pins.length === 0) {
           return [new vscode.TreeItem("(empty)", vscode.TreeItemCollapsibleState.None)];
         }
-        const toNode = (pin: cli.Bookmark) => new PinNode(
-          pin,
-          details,
-          this.liveStatus.getMonitor(
-            pin.session_id,
-            pin.provider,
-            pin.project_path
-          )
-        );
-        // Manual and auto pins stay visually separated when a catalog mixes
-        // both; single-kind catalogs keep the flat list (no extra nesting).
-        const manual = pins.filter((p) => p.origin !== "auto").map(toNode);
-        const auto = pins.filter((p) => p.origin === "auto").map(toNode);
-        if (manual.length > 0 && auto.length > 0) {
-          return [
-            ...children,
-            new PinGroupNode("Manually pinned", "pinned", "charts.blue", manual),
-            new PinGroupNode("Auto-archived", "file", "charts.green", auto),
-          ];
-        }
-        return [...children, ...pins.map(toNode)];
+        return [
+          ...children,
+          ...pins.map((pin) => new PinNode(
+            pin,
+            details,
+            this.liveStatus.getMonitor(
+              pin.session_id,
+              pin.provider,
+              pin.project_path
+            )
+          )),
+        ];
       }
     } catch (err) {
       return [errorItem("Error loading catalogs", err)];
