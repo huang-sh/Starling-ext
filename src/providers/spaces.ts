@@ -34,9 +34,7 @@ class SpaceNode extends vscode.TreeItem {
     // icon + tint to stand out as hand-picked collections.
     this.iconPath = isAutoArchiveCatalog(space)
       ? new vscode.ThemeIcon("folder")
-      : new vscode.ThemeIcon("bookmark", new vscode.ThemeColor("charts.orange"));
-    // Hand-picked catalogs use the orange bookmark vs the plain folder of
-    // cwd-named auto catalogs — distinguishable at a glance.
+      : new vscode.ThemeIcon("bookmark", new vscode.ThemeColor("charts.purple"));
     this.contextValue = "catalog";
   }
 }
@@ -144,7 +142,7 @@ export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
         const auto = roots.filter((s) => isAutoArchiveCatalog(s)).map(toNode);
         if (manual.length > 0 && auto.length > 0) {
           return [
-            new CatalogGroupNode("Manual catalogs", "bookmark", "charts.orange", manual),
+            new CatalogGroupNode("Manual catalogs", "star-full", "editorLightBulb.foreground", manual),
             new CatalogGroupNode("Auto-created catalogs", "folder-library", "charts.green", auto),
           ];
         }
