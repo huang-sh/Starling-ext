@@ -89,7 +89,16 @@ function truncate(value: string, maxLength = 28): string {
   return `…${trimmed.slice(-(maxLength - 1))}`;
 }
 
-type TreeNode = SpaceNode | PinNode | vscode.TreeItem;
+class PinGroupNode extends vscode.TreeItem {
+  constructor(label: string, icon: string, color: string, public readonly pins: PinNode[]) {
+    super(label, vscode.TreeItemCollapsibleState.Expanded);
+    this.description = `${pins.length}`;
+    this.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
+    this.contextValue = "pin-group";
+  }
+}
+
+type TreeNode = SpaceNode | PinNode | PinGroupNode | vscode.TreeItem;
 
 function errorItem(label: string, err: unknown): vscode.TreeItem {
   const message = err instanceof Error ? err.message : String(err);
@@ -128,6 +137,9 @@ export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
         const roots = spaces.filter((space) => !space.parent_id);
         return roots.map((space) => new SpaceNode(space, childCatalogs(spaces, space.id)));
       }
+      if (element instanceof PinGroupNode) {
+        return element.pins;
+      }
       if (element instanceof SpaceNode) {
         const children = childCatalogs(spaces, element.space.id).map((space) =>
           new SpaceNode(space, childCatalogs(spaces, space.id))
@@ -137,18 +149,27 @@ export class SpacesProvider implements vscode.TreeDataProvider<TreeNode> {
         if (children.length === 0 && pins.length === 0) {
           return [new vscode.TreeItem("(empty)", vscode.TreeItemCollapsibleState.None)];
         }
-        return [
-          ...children,
-          ...pins.map((pin) => new PinNode(
-            pin,
-            details,
-            this.liveStatus.getMonitor(
-              pin.session_id,
-              pin.provider,
-              pin.project_path
-            )
-          )),
-        ];
+        const toNode = (pin: cli.Bookmark) => new PinNode(
+          pin,
+          details,
+          this.liveStatus.getMonitor(
+            pin.session_id,
+            pin.provider,
+            pin.project_path
+          )
+        );
+        // Manual and auto pins stay visually separated when a catalog mixes
+        // both; single-kind catalogs keep the flat list (no extra nesting).
+        const manual = pins.filter((p) => p.origin !== "auto").map(toNode);
+        const auto = pins.filter((p) => p.origin === "auto").map(toNode);
+        if (manual.length > 0 && auto.length > 0) {
+          return [
+            ...children,
+            new PinGroupNode("Manually pinned", "pinned", "charts.blue", manual),
+            new PinGroupNode("Auto-archived", "file", "charts.green", auto),
+          ];
+        }
+        return [...children, ...pins.map(toNode)];
       }
     } catch (err) {
       return [errorItem("Error loading catalogs", err)];
